@@ -3,7 +3,7 @@
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=savitha@comp.nus.edu.sg
 #SBATCH --partition=long
-#SBATCH --time=24:00:00
+#SBATCH --time=36:00:00
 source ~/.bashrc
 conda activate ft-gym-env   # On Linux/macOS
 #srun python src/main.py --config=mappo --env-config=sc2 with env_args.map_name="2s_vs_1sc"
