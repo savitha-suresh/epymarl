@@ -267,6 +267,7 @@ def run_sequential(args, logger):
     logger.console_logger.info("Finished Training")
 
 
+
 def args_sanity_check(config, _log):
     # set CUDA flags
     # config["use_cuda"] = True # Use cuda whenever possible!

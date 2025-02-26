@@ -1,11 +1,12 @@
 from functools import partial
-from multiprocessing import Pipe, Process
+from multiprocessing import Pipe, Process, Queue, Value
 
 import numpy as np
 
 from components.episode_buffer import EpisodeBatch
 from envs import REGISTRY as env_REGISTRY
 from envs import register_smac, register_smacv2
+
 
 
 # Based (very) heavily on SubprocVecEnv from OpenAI Baselines
@@ -15,7 +16,10 @@ class ParallelRunner:
         self.args = args
         self.logger = logger
         self.batch_size = self.args.batch_size_run
-
+        self.log_queue = Queue()
+        self.stop_logging = Value('b', False)
+        key_name = self.args.env_args["key"]
+        self.obs_log_file_name = f"observation_{key_name}_{self.args.n_faulty_agents}.log"
         # Make subprocesses for the envs
         self.parent_conns, self.worker_conns = zip(
             *[Pipe() for _ in range(self.batch_size)]
@@ -60,6 +64,11 @@ class ParallelRunner:
         self.test_stats = {}
 
         self.log_train_stats_t = -100000
+        self.log_process = Process(target=_log_writer, 
+                                   args=(self.obs_log_file_name, 
+                                         self.log_queue, self.stop_logging), 
+                                   daemon=True)
+        self.log_process.start()
 
     def setup(self, scheme, groups, preprocess, mac):
         self.new_batch = partial(
@@ -83,6 +92,8 @@ class ParallelRunner:
         self.parent_conns[0].send(("save_replay", None))
 
     def close_env(self):
+        self.stop_logging.value = True
+        self.log_process.join()
         for parent_conn in self.parent_conns:
             parent_conn.send(("close", None))
 
@@ -109,8 +120,8 @@ class ParallelRunner:
     def display_info(self, obs, env_idx):
         for agent_no, agent_obs in enumerate(obs):
             if any(int(agent_obs[ind])==int(1) for ind in [8, 15, 22, 29, 43, 50, 57, 64]):
-                self.logger.console_logger.info(
-                f"Env: {env_idx} Step: {self.t} Agent {agent_no}: {agent_obs}")
+                self.log_queue.put(
+                f"\nEnv: {env_idx} Step: {self.t} Agent {agent_no}: {agent_obs}")
                 
 
     def run(self, test_mode=False):
@@ -292,6 +303,13 @@ class ParallelRunner:
                 )
         stats.clear()
 
+
+def _log_writer(file_name, log_queue, stop_logging):
+    with open(file_name, "a") as log:
+        while not stop_logging.value or not log_queue.empty():
+            while not log_queue.empty():
+                log.write(log_queue.get())
+            log.flush()
 
 def env_worker(remote, env_fn):
     # Make environment
