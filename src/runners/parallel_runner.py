@@ -1,7 +1,9 @@
 from functools import partial
 from multiprocessing import Pipe, Process, Queue, Value
+from queue import Empty
 
 import numpy as np
+import time
 
 from components.episode_buffer import EpisodeBatch
 from envs import REGISTRY as env_REGISTRY
@@ -117,12 +119,16 @@ class ParallelRunner:
         self.t = 0
         self.env_steps_this_run = 0
     
-    def display_info(self, obs, env_idx):
+    def display_info(self, reward, obs, env_idx):
+        sent = []
         for agent_no, agent_obs in enumerate(obs):
             if any(int(agent_obs[ind])==int(1) for ind in [8, 15, 22, 29, 43, 50, 57, 64]):
-                self.log_queue.put(
-                f"\nEnv: {env_idx} Step: {self.t} Agent {agent_no}: {agent_obs}")
-                
+                sent.append(
+                f"Agent {agent_no}: {agent_obs}")
+        if sent:
+            obs = "\n".join(sent)
+            to_write = f"\nEnv: {env_idx} Reward: {reward} Step: {self.t} Obs: {obs}"
+            self.log_queue.put(to_write)
 
     def run(self, test_mode=False):
         self.reset()
@@ -191,7 +197,8 @@ class ParallelRunner:
                     data = parent_conn.recv()
                     # Remaining data for this current timestep
                     post_transition_data["reward"].append((data["reward"],))
-                    self.display_info(data['obs'], idx)
+                    
+                    self.display_info(data["reward"], data['obs'], idx)
 
                     episode_returns[idx] += data["reward"]
                     episode_lengths[idx] += 1
@@ -305,13 +312,28 @@ class ParallelRunner:
 
 
 def _log_writer(file_name, log_queue, stop_logging):
-    buffer = []
     with open(file_name, "a") as log:
+        buffer = []
+        buffer_size = 100000
+        
         while not stop_logging.value or not log_queue.empty():
-            while not log_queue.empty():
-                buffer = list(islice(iter(log_queue.get, None), 10000))  
-                if buffer:
+            try:
+                # Non-blocking get with timeout
+                item = log_queue.get(timeout=0.1)
+                buffer.append(item)
+                
+                # Flush buffer when it reaches the target size
+                if len(buffer) >= buffer_size:
                     log.writelines(buffer)
+                    buffer = []
+            except Empty:  # From queue import Empty
+                if log_queue.empty():
+                    time.sleep(0.01)
+        
+        # Final flush of any remaining items
+        if buffer:
+            log.writelines(buffer)
+
 
 def env_worker(remote, env_fn):
     # Make environment
