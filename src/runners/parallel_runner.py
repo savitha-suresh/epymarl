@@ -6,7 +6,7 @@ import numpy as np
 from components.episode_buffer import EpisodeBatch
 from envs import REGISTRY as env_REGISTRY
 from envs import register_smac, register_smacv2
-
+from itertools import islice
 
 
 # Based (very) heavily on SubprocVecEnv from OpenAI Baselines
@@ -305,11 +305,13 @@ class ParallelRunner:
 
 
 def _log_writer(file_name, log_queue, stop_logging):
+    buffer = []
     with open(file_name, "a") as log:
         while not stop_logging.value or not log_queue.empty():
             while not log_queue.empty():
-                log.write(log_queue.get())
-            log.flush()
+                buffer = list(islice(iter(log_queue.get, None), 10000))  
+                if buffer:
+                    log.writelines(buffer)
 
 def env_worker(remote, env_fn):
     # Make environment
