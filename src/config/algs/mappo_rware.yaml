@@ -31,12 +31,12 @@ epochs: 4
 eps_clip: 0.2
 name: "mappo"
 
-t_max: 40050000
+t_max: 20050000
 
 
 # --- Faulty env params ---
 # These are used to introduce faults into the environment
 fault_prob: 0.01   # Probability of a fault occuring. Expected fault will occur after 1000 steps
-n_faulty_agents: 1 # Number of faulty agents
+n_faulty_agents: 2 # Number of faulty agents
 agent: "rnn_faulty" # faulty rnn agent
 
