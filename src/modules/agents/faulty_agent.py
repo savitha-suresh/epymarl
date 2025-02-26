@@ -18,14 +18,14 @@ class FaultyAgent(RNNAgent):
         
     def forward(self, inputs, hidden_state):
         # Check if we should make agents faulty
-        if not self._faulty and random.random() < self.args.fault_prob:
+        if self.faulty_agent_indices and not self._faulty and random.random() < self.args.fault_prob:
             self._faulty = True
             print(f"Agents {self.faulty_agent_indices} have become faulty!")
             
         # Get regular Q-values/logits from parent class
         q, h = super().forward(inputs, hidden_state)
         
-        if self._faulty:
+        if self.faulty_agent_indices and self._faulty:
             # For interleaved data, faulty agents appear every n_agents rows
             for faulty_idx in self.faulty_agent_indices:
                 # Modify Q-values for the specific faulty agents
