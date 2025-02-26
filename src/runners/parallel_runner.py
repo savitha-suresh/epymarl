@@ -105,6 +105,13 @@ class ParallelRunner:
 
         self.t = 0
         self.env_steps_this_run = 0
+    
+    def display_info(self, obs, env_idx):
+        for agent_no, agent_obs in enumerate(obs):
+            if any(int(agent_obs[ind])==int(1) for ind in [8, 15, 22, 29, 43, 50, 57, 64]):
+                self.logger.console_logger.info(
+                f"Env: {env_idx} Step: {self.t} Agent {agent_no}: {agent_obs}")
+                
 
     def run(self, test_mode=False):
         self.reset()
@@ -173,6 +180,7 @@ class ParallelRunner:
                     data = parent_conn.recv()
                     # Remaining data for this current timestep
                     post_transition_data["reward"].append((data["reward"],))
+                    self.display_info(data['obs'], idx)
 
                     episode_returns[idx] += data["reward"]
                     episode_lengths[idx] += 1
