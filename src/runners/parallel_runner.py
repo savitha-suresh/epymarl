@@ -67,7 +67,7 @@ class ParallelRunner:
         if self.args.log_obs:
             self.start_logging()
 
-   def start_logging(self):
+    def start_logging(self):
         self.log_train_stats_t = -100000
         self.log_process = Process(target=_log_writer, 
                                    args=(self.obs_log_file_name, 
