@@ -64,7 +64,10 @@ class ParallelRunner:
         self.test_returns = []
         self.train_stats = {}
         self.test_stats = {}
+        if self.args.log_obs:
+            self.start_logging()
 
+   def start_logging(self):
         self.log_train_stats_t = -100000
         self.log_process = Process(target=_log_writer, 
                                    args=(self.obs_log_file_name, 
@@ -198,7 +201,8 @@ class ParallelRunner:
                     # Remaining data for this current timestep
                     post_transition_data["reward"].append((data["reward"],))
                     
-                    self.display_info(data["reward"], data['obs'], idx)
+                    if self.args.log_obs:
+                        self.display_info(data["reward"], data['obs'], idx)
 
                     episode_returns[idx] += data["reward"]
                     episode_lengths[idx] += 1
