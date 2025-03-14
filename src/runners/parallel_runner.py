@@ -18,10 +18,6 @@ class ParallelRunner:
         self.args = args
         self.logger = logger
         self.batch_size = self.args.batch_size_run
-        self.log_queue = Queue()
-        self.stop_logging = Value('b', False)
-        key_name = self.args.env_args["key"]
-        self.obs_log_file_name = f"observation_{key_name}_{self.args.n_faulty_agents}.log"
         # Make subprocesses for the envs
         self.parent_conns, self.worker_conns = zip(
             *[Pipe() for _ in range(self.batch_size)]
@@ -64,11 +60,15 @@ class ParallelRunner:
         self.test_returns = []
         self.train_stats = {}
         self.test_stats = {}
+        self.log_train_stats_t = -100000
         if self.args.log_obs:
             self.start_logging()
 
     def start_logging(self):
-        self.log_train_stats_t = -100000
+        self.log_queue = Queue()
+        self.stop_logging = Value('b', False)
+        key_name = self.args.env_args["key"]
+        self.obs_log_file_name = f"observation_{key_name}_{self.args.n_faulty_agents}.log"
         self.log_process = Process(target=_log_writer, 
                                    args=(self.obs_log_file_name, 
                                          self.log_queue, self.stop_logging), 
