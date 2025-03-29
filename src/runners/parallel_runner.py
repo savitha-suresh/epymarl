@@ -68,7 +68,7 @@ class ParallelRunner:
         self.log_queue = Queue()
         self.stop_logging = Value('b', False)
         key_name = self.args.env_args["key"]
-        self.obs_log_file_name = f"observation_{key_name}_{self.args.n_faulty_agents}.log"
+        self.obs_log_file_name = f"observation_{key_name}_{self.args.n_faulty_agents}_{time.time()}.log"
         self.log_process = Process(target=_log_writer, 
                                    args=(self.obs_log_file_name, 
                                          self.log_queue, self.stop_logging), 
@@ -97,8 +97,9 @@ class ParallelRunner:
         self.parent_conns[0].send(("save_replay", None))
 
     def close_env(self):
-        self.stop_logging.value = True
-        self.log_process.join()
+        if self.args.log_obs:
+            self.stop_logging.value = True
+            self.log_process.join()
         for parent_conn in self.parent_conns:
             parent_conn.send(("close", None))
 
@@ -200,7 +201,8 @@ class ParallelRunner:
                     data = parent_conn.recv()
                     # Remaining data for this current timestep
                     post_transition_data["reward"].append((data["reward"],))
-                    
+                    #if not self.args.log_obs:
+                    #    time.sleep(self.args.sleep_time) 
                     if self.args.log_obs:
                         self.display_info(data["reward"], data['obs'], idx)
 

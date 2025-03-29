@@ -28,6 +28,7 @@ wandb_save_model: False # Save models to W&B (only done if use_wandb is True and
 save_model: True # Save the models to disk
 save_model_interval: 50000 # Save models after this many timesteps
 checkpoint_path: ""
+#checkpoint_path: "results/models/mappo_seed161774236_rware:rware-tiny-4ag-v2_2025-03-14 13:59:38.900572/"
 #checkpoint_path: "results/models/mappo_seed192296109_rware:rware-tiny-2ag-v2_2025-02-01 17:01:47.504459/" # Load a checkpoint from this path
 evaluate: False # Evaluate model for test_nepisode episodes and quit (no training)
 render: False # Render the environment when evaluating (only when evaluate == True)
