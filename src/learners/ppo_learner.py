@@ -85,7 +85,7 @@ class PPOLearner:
 
             pi = mac_out
             advantages, critic_train_stats = self.train_critic_sequential(
-                self.critic, self.target_critic, batch, rewards, critic_mask
+                self.critic, self.target_critic, batch, rewards, critic_mask, actions
             )
             advantages = advantages.detach()
             # Calculate policy grad with mask
@@ -159,7 +159,7 @@ class PPOLearner:
             )
             self.log_stats_t = t_env
 
-    def train_critic_sequential(self, critic, target_critic, batch, rewards, mask):
+    def train_critic_sequential(self, critic, target_critic, batch, rewards, mask, actions=None):
         # Optimise critic
         with th.no_grad():
             target_vals = target_critic(batch)
@@ -171,6 +171,7 @@ class PPOLearner:
         target_returns = self.nstep_returns(
             rewards, mask, target_vals, self.args.q_nstep
         )
+        
         if self.args.standardise_returns:
             self.ret_ms.update(target_returns)
             target_returns = (target_returns - self.ret_ms.mean) / th.sqrt(
