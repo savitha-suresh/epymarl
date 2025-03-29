@@ -26,6 +26,7 @@ class PPOLearner:
 
         self.critic_params = list(self.critic.parameters())
         self.critic_optimiser = Adam(params=self.critic_params, lr=args.lr)
+        self.no_op_action = 0
 
         self.last_target_update_step = 0
         self.critic_training_steps = 0
@@ -186,10 +187,20 @@ class PPOLearner:
             "q_taken_mean": [],
         }
 
-        v = critic(batch)[:, :-1].squeeze(3)
+        # Identify faulty agents (agents that always take no-op)
+        v = critic(batch)[:, :-1].squeeze(3)  # (batch_size, episode_length, n_agents)
         td_error = target_returns.detach() - v
-        masked_td_error = td_error * mask
-        loss = (masked_td_error**2).sum() / mask.sum()
+
+        # Identify no-op agents (if their actions are always the same)
+        no_op_mask = (actions == self.no_op_action).float().mean(dim=(0, 1))
+        active_agents = (no_op_mask < 0.99).float()  # 1 for learning agents, 0 for no-op agents
+
+        # Apply agent mask
+        masked_td_error = td_error * mask * active_agents.view(1, 1, -1)  # (batch_size, episode_length, n_agents)
+
+        # Compute loss only for active agents
+        loss = (masked_td_error**2).sum() / (mask * active_agents.view(1, 1, -1)).sum()
+
 
         self.critic_optimiser.zero_grad()
         loss.backward()
