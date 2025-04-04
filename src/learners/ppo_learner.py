@@ -104,11 +104,15 @@ class PPOLearner:
             )
 
             entropy = -th.sum(pi * th.log(pi + 1e-10), dim=-1)
+            no_op_mask = (actions == self.no_op_action).float().mean(dim=(0, 1))
+            active_agents = (no_op_mask < 0.99).float()  # 1 for learning agents, 0 for no-op agents
+            active_agents = active_agents.view(1, 1, -1)
+            mask_active = mask * active_agents  # Apply agent mask
             pg_loss = (
                 -(
-                    (th.min(surr1, surr2) + self.args.entropy_coef * entropy) * mask
+                    (th.min(surr1, surr2) + self.args.entropy_coef * entropy) * mask_active
                 ).sum()
-                / mask.sum()
+                / mask_active.sum()
             )
 
             # Optimise agents
