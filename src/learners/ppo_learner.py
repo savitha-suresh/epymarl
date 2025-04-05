@@ -48,7 +48,10 @@ class PPOLearner:
         mask = batch["filled"][:, :-1].float()
         mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1])
         actions = actions[:, :-1]
-
+        no_op_mask = (actions == self.no_op_action).float().mean(dim=(0, 1))
+        active_agents = (no_op_mask < 0.99).float()  # 1 for learning agents, 0 for no-op agents
+        active_agents = active_agents.view(1, 1, -1)
+        
         if self.args.standardise_rewards:
             self.rew_ms.update(rewards)
             rewards = (rewards - self.rew_ms.mean) / th.sqrt(self.rew_ms.var)
@@ -61,7 +64,7 @@ class PPOLearner:
             rewards = rewards.expand(-1, -1, self.n_agents)
 
         mask = mask.repeat(1, 1, self.n_agents)
-
+        mask = mask * active_agents
         critic_mask = mask.clone()
 
         old_mac_out = []
@@ -104,15 +107,12 @@ class PPOLearner:
             )
 
             entropy = -th.sum(pi * th.log(pi + 1e-10), dim=-1)
-            no_op_mask = (actions == self.no_op_action).float().mean(dim=(0, 1))
-            active_agents = (no_op_mask < 0.99).float()  # 1 for learning agents, 0 for no-op agents
-            active_agents = active_agents.view(1, 1, -1)
-            mask_active = mask * active_agents  # Apply agent mask
+              # Apply agent mask
             pg_loss = (
                 -(
-                    (th.min(surr1, surr2) + self.args.entropy_coef * entropy) * mask_active
+                    (th.min(surr1, surr2) + self.args.entropy_coef * entropy) * mask
                 ).sum()
-                / mask_active.sum()
+                / mask.sum()
             )
 
             # Optimise agents
@@ -195,15 +195,11 @@ class PPOLearner:
         v = critic(batch)[:, :-1].squeeze(3)  # (batch_size, episode_length, n_agents)
         td_error = target_returns.detach() - v
 
-        # Identify no-op agents (if their actions are always the same)
-        no_op_mask = (actions == self.no_op_action).float().mean(dim=(0, 1))
-        active_agents = (no_op_mask < 0.99).float()  # 1 for learning agents, 0 for no-op agents
-
         # Apply agent mask
-        masked_td_error = td_error * mask * active_agents.view(1, 1, -1)  # (batch_size, episode_length, n_agents)
+        masked_td_error = td_error * mask  # (batch_size, episode_length, n_agents)
 
         # Compute loss only for active agents
-        loss = (masked_td_error**2).sum() / (mask * active_agents.view(1, 1, -1)).sum()
+        loss = (masked_td_error**2).sum() / (mask).sum()
 
 
         self.critic_optimiser.zero_grad()

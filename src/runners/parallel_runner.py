@@ -131,7 +131,7 @@ class ParallelRunner:
                 f"Agent {agent_no}: {agent_obs}")
         if sent:
             obs = "\n".join(sent)
-            to_write = f"\nEnv: {env_idx} Reward: {reward} Step: {self.t_env} Obs: {obs}"
+            to_write = f"\nEnv: {env_idx} Reward: {reward} Step: {self.t} Obs: {obs}"
             
             self.log_queue.put_nowait(to_write)
             

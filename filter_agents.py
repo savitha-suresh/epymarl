@@ -97,8 +97,8 @@ def process_json_files(input_dir, output_dir):
     print("Filtering complete!")
 
 def main():
-    input_dir = 'output_json_2'  # Directory containing the JSON files
-    output_dir = 'filtered_json_2'  # Directory to save filtered JSON files
+    input_dir = 'output_json'  # Directory containing the JSON files
+    output_dir = 'filtered_json'  # Directory to save filtered JSON files
     
     print(f"Input directory: {input_dir}")
     print(f"Output directory: {output_dir}")
