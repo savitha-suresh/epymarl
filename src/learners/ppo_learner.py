@@ -64,7 +64,7 @@ class PPOLearner:
             rewards = rewards.expand(-1, -1, self.n_agents)
 
         mask = mask.repeat(1, 1, self.n_agents)
-        mask = mask * active_agents
+        #mask = mask * active_agents
         critic_mask = mask.clone()
 
         old_mac_out = []
