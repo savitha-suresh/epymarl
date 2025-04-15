@@ -1,0 +1,42 @@
+# --- Central-V specific parameters ---
+
+action_selector: "soft_policies"
+mask_before_softmax: True
+
+runner: "parallel"
+
+buffer_size: 10
+batch_size_run: 10
+batch_size: 10
+
+# update the target network every {} training steps
+target_update_interval_or_tau: 0.01
+
+lr: 0.0005
+hidden_dim: 128
+
+obs_agent_id: True
+obs_last_action: False
+obs_individual_obs: False
+
+agent_output_type: "pi_logits"
+learner: "actor_critic_learner"
+entropy_coef: 0.01
+use_rnn: True
+standardise_returns: False
+standardise_rewards: False
+q_nstep: 5 # 1 corresponds to normal r + gammaV
+critic_type: "cv_critic"
+
+name: "maa2c"
+
+t_max: 20050000
+
+# --- Faulty env params ---
+# These are used to introduce faults into the environment
+fault_prob: 0.01   # Probability of a fault occuring. Expected fault will occur after 1000 steps
+n_faulty_agents: 1 # Number of faulty agents
+agent: "rnn_faulty" # faulty rnn agent
+log_obs: False
+sleep_time: 0.001
+
