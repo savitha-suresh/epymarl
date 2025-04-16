@@ -12,3 +12,7 @@ conda activate ft-gym-env   # On Linux/macOS
 #srun python src/main.py --config=coma  --env-config=gymma with env_args.time_limit=25 env_args.key="pz-mpe-simple-adversary-v3" env_args.pretrained_wrapper="PretrainedAdversary"
 #srun python src/main.py --config=maddpg --env-config=gymma with env_args.time_limit=50 env_args.key="lbforaging:Foraging-8x8-2p-3f-v3"
 srun python src/main.py --config=mappo_rware --env-config=gymma with env_args.time_limit=500 env_args.key="rware:rware-tiny-4ag-v2"
+#srun python src/main.py --config=mappo_rware --env-config=gymma with env_args.time_limit=500 env_args.key="rware:rware-tiny-4ag-v2"
+
+#srun python src/main.py --config=maa2c_rware --env-config=gymma with env_args.time_limit=500 env_args.key="rware:rware-tiny-4ag-v2"
+
