@@ -10,6 +10,7 @@ from envs import REGISTRY as env_REGISTRY
 from envs import register_smac, register_smacv2
 from itertools import islice
 
+import random
 
 # Based (very) heavily on SubprocVecEnv from OpenAI Baselines
 # https://github.com/openai/baselines/blob/master/baselines/common/vec_env/subproc_vec_env.py
@@ -63,6 +64,8 @@ class ParallelRunner:
         self.log_train_stats_t = -100000
         if self.args.log_obs:
             self.start_logging()
+        self.faulty = False
+        self.faulty_agent_indices = None
 
     def start_logging(self):
         self.log_queue = Queue()
@@ -74,6 +77,18 @@ class ParallelRunner:
                                          self.log_queue, self.stop_logging), 
                                    daemon=True)
         self.log_process.start()
+
+    def init_fault(self):
+        
+        self.n_agents = self.env_info["n_agents"]
+        self.faulty_agent_indices = set(random.sample(range(self.n_agents), 
+                                                      self.args.n_faulty_agents))
+        
+        self.agent_pos = [[1] * self.batch_size for _ in range(self.args.n_agents)]
+        self.faulty_row = self.args.faulty_row
+        self.no_op_action = 0 
+        
+
 
     def setup(self, scheme, groups, preprocess, mac):
         self.new_batch = partial(
@@ -135,11 +150,9 @@ class ParallelRunner:
             
             self.log_queue.put_nowait(to_write)
             
-            
-
     def run(self, test_mode=False):
         self.reset()
-
+        
         all_terminated = False
         if self.args.common_reward:
             episode_returns = [0 for _ in range(self.batch_size)]
@@ -166,7 +179,7 @@ class ParallelRunner:
                 test_mode=test_mode,
             )
             cpu_actions = actions.to("cpu").numpy()
-
+            
             # Update the actions taken
             actions_chosen = {"actions": actions.unsqueeze(1)}
             self.batch.update(
@@ -180,6 +193,22 @@ class ParallelRunner:
                     if not terminated[
                         idx
                     ]:  # Only send the actions to the env if it hasn't terminated
+                        if self.args.action_fault:
+                            if not self.faulty and random.uniform(0, 1) < self.args.fault_prob:
+                                self.logger.console_logger.info(
+                                    f"Agent {self.faulty_agent_indices} has become action faulty")
+                                self.faulty = True
+                                if self.args.constrained_faults:
+                                    self.logger.console_logger.info(f"constrained faults")
+                        if self.args.action_fault and self.faulty:
+                            for fault_idx in self.faulty_agent_indices:
+                                if self.args.constrained_faults:
+                                    env_positions = self.agent_pos[fault_idx]
+                                    for env_pos_idx in range(len(env_positions)):
+                                        if  env_positions[env_pos_idx][1] == self.faulty_row:
+                                            cpu_actions[env_pos_idx, fault_idx] = self.no_op_action
+                                else:
+                                    cpu_actions[:, fault_idx] = self.no_op_action
                         parent_conn.send(("step", cpu_actions[action_idx]))
                     action_idx += 1  # actions is not a list over every env
                     if idx == 0 and test_mode and self.args.render:
@@ -208,6 +237,9 @@ class ParallelRunner:
                     #    time.sleep(self.args.sleep_time) 
                     if self.args.log_obs:
                         self.display_info(data["reward"], data['obs'], idx)
+                    if self.args.action_fault and self.args.n_faulty_agents:
+                        for agent_idx in range(self.env_info["n_agents"]):
+                            self.agent_pos[agent_idx][idx] = (data['obs'][agent_idx][0], data['obs'][agent_idx][1])
 
                     episode_returns[idx] += data["reward"]
                     episode_lengths[idx] += 1
