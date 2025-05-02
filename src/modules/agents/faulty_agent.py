@@ -9,24 +9,27 @@ class FaultyAgent(RNNAgent):
     
     Data format: Interleaved agents per batch
     """
+    
     def __init__(self, input_shape, args):
         super(FaultyAgent, self).__init__(input_shape, args)
         self.args = args
         if self.args.action_fault:
             raise ValueError("Cannot use this network fault with action_fault set to True")
         self._faulty = False
-        self.faulty_agent_indices = set(random.sample(range(self.args.n_agents), 
-                                                      self.args.n_faulty_agents))
+        self.init_random_fault()
         self.faulty_row = self.args.faulty_row
         self.no_op_action = 0
-        
+    
+    def init_random_fault(self):
+        self.faulty_agent_indices = set(random.sample(range(self.args.n_agents), 
+                                                      self.args.n_faulty_agents))
+        self._faulty = False
+
     def forward(self, inputs, hidden_state):
         # Check if we should make agents faulty
         if self.faulty_agent_indices and not self._faulty and random.random() < self.args.fault_prob:
             self._faulty = True
             print(f"Agents {self.faulty_agent_indices} have become network faulty!")
-            if self.args.constrained_faults:
-                print(f"constrained faults")
             
         # Get regular Q-values/logits from parent class
         q, h = super().forward(inputs, hidden_state)

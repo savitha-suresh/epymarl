@@ -38,9 +38,9 @@ t_max: 20050000
 # These are used to introduce faults into the environment
 fault_prob: 0.01   # Probability of a fault occuring. Expected fault will occur after 1000 steps
 n_faulty_agents: 1 # Number of faulty agents
-agent: "rnn" # faulty rnn agent
-log_obs: True
+agent: "rnn_faulty" # faulty rnn agent
+log_obs: False
 sleep_time: 0.001
-action_fault: True # if true then agent should be rnn not rnn_faulty
+action_fault: False # if true then agent should be rnn not rnn_faulty
 constrained_faults: True # to stall an agent only in the row above goal
 faulty_row: 9

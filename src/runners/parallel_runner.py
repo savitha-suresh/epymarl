@@ -152,7 +152,6 @@ class ParallelRunner:
             
     def run(self, test_mode=False):
         self.reset()
-        
         all_terminated = False
         if self.args.common_reward:
             episode_returns = [0 for _ in range(self.batch_size)]
@@ -220,6 +219,7 @@ class ParallelRunner:
             ]
             all_terminated = all(terminated)
             if all_terminated:
+                self.mac.agent.init_random_fault()
                 break
 
             # Post step data we will insert for the current timestep
