@@ -219,7 +219,6 @@ class ParallelRunner:
             ]
             all_terminated = all(terminated)
             if all_terminated:
-                self.mac.agent.init_random_fault()
                 break
 
             # Post step data we will insert for the current timestep

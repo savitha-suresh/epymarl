@@ -44,13 +44,11 @@ class TransformerAgent(nn.Module):
         return self.fc1.weight.new(1, self.args.hidden_dim).zero_()
 
     def forward(self, inputs, hidden_state):
-        # inputs: (seq_len, batch_size, input_dim)
-        x = F.relu(self.fc1(inputs))  # (seq_len, batch_size, hidden_dim)
-        x = self.pos_enc(x)  # Add positional encoding
-        x = self.transformer_encoder(x)  # (seq_len, batch_size, hidden_dim)
+        x = F.relu(self.fc1(inputs))  
+        x = self.pos_enc(x)  
+        x = self.transformer_encoder(x)  
 
-        # Use the last token's output as summary representation
-        summary = x[-1]  # (batch_size, hidden_dim)
-        q = self.fc2(summary)  # (batch_size, n_actions)
+        summary = x[-1]  
+        q = self.fc2(summary)
         return q, None
 
