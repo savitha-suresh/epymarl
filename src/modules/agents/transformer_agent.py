@@ -25,12 +25,12 @@ class TransformerAgent(nn.Module):
         super(TransformerAgent, self).__init__()
         self.args = args
 
-        self.fc1 = nn.Linear(input_shape, args.hidden_dim)
+        self.fc1 = nn.Linear(1, args.hidden_dim)
         self.pos_enc = PositionalEncoding(args.hidden_dim, max_len=args.max_seq_len)
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=args.hidden_dim, 
-            nhead=args.n_heads, batch_first=False)
+            nhead=args.n_heads, batch_first=True)
         self.transformer_encoder = nn.TransformerEncoder(
             encoder_layer, num_layers=args.n_layers)
 
@@ -44,11 +44,12 @@ class TransformerAgent(nn.Module):
         return self.fc1.weight.new(1, self.args.hidden_dim).zero_()
 
     def forward(self, inputs, hidden_state):
-        x = F.relu(self.fc1(inputs))  
+        x = inputs.view(self.args.batch_size*self.args.n_agents, self.args.max_seq_len, 1)
+        x = F.relu(self.fc1(x))  
         x = self.pos_enc(x)  
         x = self.transformer_encoder(x)  
 
-        summary = x[-1]  
+        summary = x[:, -1]
         q = self.fc2(summary)
         return q, None
 
