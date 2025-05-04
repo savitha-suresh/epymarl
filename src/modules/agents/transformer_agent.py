@@ -45,7 +45,7 @@ class TransformerAgent(nn.Module):
 
     def forward(self, inputs, hidden_state):
         seq_len = inputs.size(1)
-        causal_mask = torch.tril(torch.ones(seq_len, seq_len)).to(x.device)  # [T, T]
+        causal_mask = torch.tril(torch.ones(seq_len, seq_len)).to(inputs.device)  # [T, T]
         causal_mask = causal_mask.masked_fill(causal_mask == 0, float('-inf')) \
                                 .masked_fill(causal_mask == 1, float(0.0))
         x = F.relu(self.fc1(inputs))  
