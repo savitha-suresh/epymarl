@@ -48,7 +48,7 @@ class TransformerAgent(nn.Module):
         x = self.pos_enc(x)  
         x = self.transformer_encoder(x)  
 
-        summary = x[:, -1]
-        q = self.fc2(summary)
+       
+        q = self.fc2(x)
         return q, None
 
