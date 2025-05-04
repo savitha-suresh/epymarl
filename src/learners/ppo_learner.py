@@ -98,18 +98,11 @@ class PPOLearner:
         for k in range(self.args.epochs):
             mac_out = []
             self.mac.init_hidden(batch.batch_size)
-            if self.args.agent != "transformer":
-                for t in range(batch.max_seq_length - 1):
-                    agent_outs = self.mac.forward(batch, t=t)
-                    mac_out.append(agent_outs)
-                mac_out = th.stack(mac_out, dim=1)  # Concat over time
-            else:
-                # For transformer agent, we need to reshape the input
-                inputs = batch["obs"][:, :-1].view(
-                    batch.batch_size * self.n_agents, -1, self.args.max_seq_len
-                )
-                mac_out = self.mac.forward(inputs, None)
-                mac_out = mac_out.view(batch.batch_size, self.n_agents, -1)
+            for t in range(batch.max_seq_length - 1):
+                agent_outs = self.mac.forward(batch, t=t)
+                mac_out.append(agent_outs)
+            mac_out = th.stack(mac_out, dim=1)  # Concat over time
+            
 
             pi = mac_out
             advantages, critic_train_stats = self.train_critic_sequential(

@@ -56,7 +56,7 @@ class TransformerPPOLearner(PPOLearner):
             
             self.mac.init_hidden(batch.batch_size)
         
-                # For transformer agent, we need to reshape the input
+            # For transformer agent, we need to reshape the input
             
             mac_out = self.mac.forward(batch)
             

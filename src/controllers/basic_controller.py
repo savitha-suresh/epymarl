@@ -20,6 +20,9 @@ class BasicMAC:
         # Only select actions for the selected batch elements in bs
         avail_actions = ep_batch["avail_actions"]
         agent_outputs = self.forward(ep_batch, t_ep, test_mode=test_mode)
+        print("agent_outpus", agent_outputs.shape)
+        agent_outputs = agent_outputs[:, -1, :]
+        print("agent_outpus last", agent_outputs.shape)
         chosen_actions = self.action_selector.select_action(
             agent_outputs[bs], avail_actions[bs], t_env, test_mode=test_mode)
         return chosen_actions
@@ -41,11 +44,13 @@ class BasicMAC:
 
             if getattr(self.args, "mask_before_softmax", True):
                 # Make the logits for unavailable actions very negative to minimise their affect on the softmax
-                reshaped_avail_actions = avail_actions.reshape(ep_batch.batch_size * self.n_agents, -1)
+                avail_actions = avail_actions.permute(0, 2,1,3)
+                reshaped_avail_actions = avail_actions.reshape(ep_batch.batch_size * self.n_agents, agent_outs.size(1), -1)
+                print("reshape", reshaped_avail_actions.shape, agent_outs.shape)
                 agent_outs[reshaped_avail_actions == 0] = -1e10
             agent_outs = th.nn.functional.softmax(agent_outs, dim=-1)
 
-        return agent_outs.view(ep_batch.batch_size, self.n_agents, -1)
+        return agent_outs
 
     def init_hidden(self, batch_size):
         self.hidden_states = self.agent.init_hidden().unsqueeze(0).expand(batch_size, self.n_agents, -1)  # bav

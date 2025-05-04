@@ -44,11 +44,15 @@ class TransformerAgent(nn.Module):
         return self.fc1.weight.new(1, self.args.hidden_dim).zero_()
 
     def forward(self, inputs, hidden_state):
+        seq_len = inputs.size(1)
+        causal_mask = torch.tril(torch.ones(seq_len, seq_len)).to(x.device)  # [T, T]
+        causal_mask = causal_mask.masked_fill(causal_mask == 0, float('-inf')) \
+                                .masked_fill(causal_mask == 1, float(0.0))
         x = F.relu(self.fc1(inputs))  
         x = self.pos_enc(x)  
-        x = self.transformer_encoder(x)  
+        x = self.transformer_encoder(x, mask=causal_mask)  # (batch_size, seq_len, d_model)
 
-       
+        
         q = self.fc2(x)
         return q, None
 
