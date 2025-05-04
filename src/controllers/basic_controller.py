@@ -26,6 +26,8 @@ class BasicMAC:
 
     def forward(self, ep_batch, t=None, test_mode=False):
         agent_inputs = self._build_inputs(ep_batch, t)
+        if t is None:
+            t= -1
         avail_actions = ep_batch["avail_actions"][:, t]
         if test_mode:
             with th.no_grad():
