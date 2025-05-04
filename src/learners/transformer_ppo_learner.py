@@ -45,8 +45,14 @@ class TransformerPPOLearner(PPOLearner):
         
         self.old_mac.init_hidden(batch.batch_size)
         old_mac_out = self.old_mac.forward(batch)
-            
+        old_mac_out = old_mac_out.view(
+            batch.batch_size, batch.max_seq_length, self.n_agents, self.args.n_actions)
+        old_mac_out = old_mac_out.permute(0, 2, 1, 3)
         old_pi = old_mac_out
+        old_pi = old_pi[:, :500, :, :]  # [10, 4, 500, 5]
+
+        
+        
         old_pi[mask == 0] = 1.0
 
         old_pi_taken = th.gather(old_pi, dim=3, index=actions).squeeze(3)
@@ -59,8 +65,11 @@ class TransformerPPOLearner(PPOLearner):
             # For transformer agent, we need to reshape the input
             
             mac_out = self.mac.forward(batch)
-            
+            mac_out = mac_out.permute(0, 2, 1, 3)
             pi = mac_out
+            pi = pi[:, :500, :, :] 
+            
+           
             advantages, critic_train_stats = self.train_critic_sequential(
                 self.critic, self.target_critic, batch, rewards, critic_mask, actions
             )
