@@ -29,13 +29,10 @@ class BasicMAC:
         agent_inputs = self._build_inputs(ep_batch)
         
         avail_actions = ep_batch["avail_actions"]
-        if test_mode:
-            with th.no_grad():
-                agent_outs, self.hidden_states = self.agent(agent_inputs, self.hidden_states)
-        else:
-            agent_outs, self.hidden_states = self.agent(agent_inputs, self.hidden_states)
+        
+        agent_outs, self.hidden_states = self.agent(agent_inputs, self.hidden_states)
 
-        agent_outs = agent_outs.detach()
+        
 
         # Softmax the agent outputs if they're policy logits
         if self.agent_output_type == "pi_logits":

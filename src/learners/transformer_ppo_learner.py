@@ -45,8 +45,6 @@ class TransformerPPOLearner(PPOLearner):
         
         self.old_mac.init_hidden(batch.batch_size)
         old_mac_out = self.old_mac.forward(batch)
-        old_mac_out = old_mac_out.view(
-            batch.batch_size, batch.max_seq_length, self.n_agents, self.args.n_actions)
         old_mac_out = old_mac_out.permute(0, 2, 1, 3)
         old_pi = old_mac_out
         old_pi = old_pi[:, :500, :, :]  # [10, 4, 500, 5]
