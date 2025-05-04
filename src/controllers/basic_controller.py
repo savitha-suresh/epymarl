@@ -20,13 +20,20 @@ class BasicMAC:
         # Only select actions for the selected batch elements in bs
         avail_actions = ep_batch["avail_actions"][:, t_ep]
         agent_outputs = self.forward(ep_batch, t_ep, test_mode=test_mode)
-        chosen_actions = self.action_selector.select_action(agent_outputs[bs], avail_actions[bs], t_env, test_mode=test_mode)
+        chosen_actions = self.action_selector.select_action(
+            agent_outputs[bs], avail_actions[bs], t_env, test_mode=test_mode)
         return chosen_actions
 
-    def forward(self, ep_batch, t, test_mode=False):
+    def forward(self, ep_batch, t=None, test_mode=False):
         agent_inputs = self._build_inputs(ep_batch, t)
         avail_actions = ep_batch["avail_actions"][:, t]
-        agent_outs, self.hidden_states = self.agent(agent_inputs, self.hidden_states)
+        if test_mode:
+            with th.no_grad():
+                agent_outs, self.hidden_states = self.agent(agent_inputs, self.hidden_states)
+        else:
+            agent_outs, self.hidden_states = self.agent(agent_inputs, self.hidden_states)
+
+        agent_outs = agent_outs.detach()
 
         # Softmax the agent outputs if they're policy logits
         if self.agent_output_type == "pi_logits":
@@ -64,18 +71,23 @@ class BasicMAC:
         # Assumes homogenous agents with flat observations.
         # Other MACs might want to e.g. delegate building inputs to each agent
         bs = batch.batch_size
-        inputs = []
-        inputs.append(batch["obs"][:, t])  # b1av
-        if self.args.obs_last_action:
-            if t == 0:
-                inputs.append(th.zeros_like(batch["actions_onehot"][:, t]))
-            else:
-                inputs.append(batch["actions_onehot"][:, t-1])
-        if self.args.obs_agent_id:
-            inputs.append(th.eye(self.n_agents, device=batch.device).unsqueeze(0).expand(bs, -1, -1))
+        all_inputs = []
+        for t in range(batch.max_seq_length):
+            
+            inputs = []
+            inputs.append(batch["obs"][:, t])  # b1av
+            if self.args.obs_last_action:
+                if t == 0:
+                    inputs.append(th.zeros_like(batch["actions_onehot"][:, t]))
+                else:
+                    inputs.append(batch["actions_onehot"][:, t-1])
+            if self.args.obs_agent_id:
+                inputs.append(th.eye(self.n_agents, device=batch.device).unsqueeze(0).expand(bs, -1, -1))
 
-        inputs = th.cat([x.reshape(bs*self.n_agents, -1) for x in inputs], dim=1)
-        return inputs
+            inputs = th.cat([x.reshape(bs*self.n_agents, -1) for x in inputs], dim=1)
+            all_inputs.append(inputs)
+        all_inputs = th.stack(all_inputs, dim=1)
+        return all_inputs
 
     def _get_input_shape(self, scheme):
         input_shape = scheme["obs"]["vshape"]
