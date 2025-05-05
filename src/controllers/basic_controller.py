@@ -32,20 +32,18 @@ class BasicMAC:
         
         agent_outs, self.hidden_states = self.agent(agent_inputs, self.hidden_states)
 
-        
-        with th.no_grad():
-        # Softmax the agent outputs if they're policy logits
-            if self.agent_output_type == "pi_logits":
+    
+        if self.agent_output_type == "pi_logits":
 
-                if getattr(self.args, "mask_before_softmax", True):
-                    # Make the logits for unavailable actions very negative to minimise their affect on the softmax
-                    avail_actions = avail_actions.permute(0, 2,1,3)
-                    reshaped_avail_actions = avail_actions.reshape(ep_batch.batch_size * self.n_agents, agent_outs.size(1), -1)
-                    print("reshape", reshaped_avail_actions.shape, agent_outs.shape)
-                    agent_outs[reshaped_avail_actions == 0] = -1e10
-                agent_outs = th.nn.functional.softmax(agent_outs, dim=-1)
+            if getattr(self.args, "mask_before_softmax", True):
+                # Make the logits for unavailable actions very negative to minimise their affect on the softmax
+                avail_actions = avail_actions.permute(0, 2,1,3)
+                reshaped_avail_actions = avail_actions.reshape(ep_batch.batch_size * self.n_agents, agent_outs.size(1), -1)
+                print("reshape", reshaped_avail_actions.shape, agent_outs.shape)
+                agent_outs[reshaped_avail_actions == 0] = -1e10
+            agent_outs = th.nn.functional.softmax(agent_outs, dim=-1)
             B, T, F = agent_outs.shape
-            return agent_outs.view(ep_batch.batch_size, self.n_agents, T, F)
+        return agent_outs.view(ep_batch.batch_size, self.n_agents, T, F)
 
     def init_hidden(self, batch_size):
         self.hidden_states = self.agent.init_hidden().unsqueeze(0).expand(batch_size, self.n_agents, -1)  # bav
@@ -73,7 +71,7 @@ class BasicMAC:
         # Other MACs might want to e.g. delegate building inputs to each agent
         bs = batch.batch_size
         all_inputs = []
-        for t in range(batch.max_seq_length):
+        for t in range(batch.max_seq_length-1):
             
             inputs = []
             inputs.append(batch["obs"][:, t])  # b1av
