@@ -7,6 +7,7 @@ from torch.optim import Adam
 from components.episode_buffer import EpisodeBatch
 from components.standarize_stream import RunningMeanStd
 from modules.critics import REGISTRY as critic_resigtry
+from components.penalty import StuckPenaltyRewardShaper
 
 
 class PPOLearner:
@@ -15,6 +16,11 @@ class PPOLearner:
         self.n_agents = args.n_agents
         self.n_actions = args.n_actions
         self.logger = logger
+        self.stuck_penalty = StuckPenaltyRewardShaper(
+            max_lookback=10,
+            base_penalty=0.005,  # Adjust based on reward scale
+            penalty_growth_rate=0.5
+        )
 
         self.mac = mac
         self.old_mac = copy.deepcopy(mac)
@@ -43,6 +49,9 @@ class PPOLearner:
         # Get the relevant quantities
 
         rewards = batch["reward"][:, :-1]
+        positions = batch["obs"][:, :, :, 0:2]
+        if episode_num > 20:
+            rewards = self.stuck_penalty.shape_rewards(rewards, positions)
         actions = batch["actions"][:, :]
         terminated = batch["terminated"][:, :-1].float()
         mask = batch["filled"][:, :-1].float()
@@ -78,7 +87,7 @@ class PPOLearner:
 
         old_pi_taken = th.gather(old_pi, dim=3, index=actions).squeeze(3)
         old_log_pi_taken = th.log(old_pi_taken + 1e-10)
-
+        
         for k in range(self.args.epochs):
             mac_out = []
             self.mac.init_hidden(batch.batch_size)
@@ -168,6 +177,7 @@ class PPOLearner:
 
     def train_critic_sequential(self, critic, target_critic, batch, rewards, mask, actions=None):
         # Optimise critic
+        
         with th.no_grad():
             target_vals = target_critic(batch)
             target_vals = target_vals.squeeze(3)
