@@ -123,7 +123,7 @@ def write_to_json(data, output_dir, file_counter):
     print(f"Wrote {len(data)} environment entries to {filepath}")
 
 def main():
-    file_path = 'observation_rware:rware-tiny-4ag-v2_1_1746172991.2416818.log'  # Replace with your actual file path
+    file_path = 'observation_rware:rware-tiny-4ag-v2_1_1746608976.764676.log'  # Replace with your actual file path
     output_dir = 'output_json'  # Directory to save JSON files
     chunk_size = 10000  # Number of Env: 0 entries to process before writing
     

@@ -37,41 +37,16 @@ class StuckPenaltyRewardShaper:
         
         # Initialize penalties for each agent
         per_agent_penalties = th.zeros(batch_size, seq_length, n_agents, device=device)
+        stuck_count = th.ones(batch_size, n_agents)
+
         
         # For each timestep, look back and check how long agent has been stuck
         for t in range(seq_length):
             # We can only look back up to t or max_lookback, whichever is smaller
-            lookback = min(t, self.max_lookback)
-            if lookback >= 1:  # Need at least 1 step to compare
-                current_pos = positions[:, t, :, :]  # [batch_size, n_agents, pos_dim]
-                
-                # Initialize counter for consecutive same positions
-                stuck_count = th.ones(batch_size, n_agents, device=device)
-                
-                # Look backward from current position
-                for step_back in range(1, lookback + 1):
-                    prev_pos = positions[:, t - step_back, :, :]  # [batch_size, n_agents, pos_dim]
-                    
-                    # Check if positions match across all dimensions
-                    is_same = th.all(current_pos == prev_pos, dim=-1)  # [batch_size, n_agents]
-                    
-                    # If position matches and we're still counting up, increment
-                    # If position doesn't match, we stop counting for that agent
-                    still_counting = (stuck_count > 0)
-                    stuck_count = th.where(
-                        is_same & still_counting,
-                        stuck_count + 1,  # Increment if still the same
-                        th.zeros_like(stuck_count)  # Reset counter if positions differ
-                    )
-                
-                # Cap at max lookback
-                stuck_count = th.clamp(stuck_count, 0, self.max_lookback)
-                
-                # Map stuck counts to penalty values using our coefficient table
-                for b in range(batch_size):
-                    for a in range(n_agents):
-                        per_agent_penalties[b, t, a] = self.penalty_coeffs[stuck_count[b, a].long()]
-        
+            is_same = th.all(positions[:, t] == positions[:, t - 1], dim=-1)
+            stuck_count = th.where(is_same, stuck_count + 1, th.ones_like(stuck_count))
+            stuck_count = th.clamp(stuck_count, 0, self.max_lookback)
+            per_agent_penalties[:, t] = self.penalty_coeffs[stuck_count.long()]
         # Apply mask if provided
         if mask is not None:
             per_agent_penalties = per_agent_penalties * mask

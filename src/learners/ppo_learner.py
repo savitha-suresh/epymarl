@@ -18,8 +18,8 @@ class PPOLearner:
         self.logger = logger
         self.stuck_penalty = StuckPenaltyRewardShaper(
             max_lookback=10,
-            base_penalty=0.005,  # Adjust based on reward scale
-            penalty_growth_rate=0.5
+            base_penalty=0.1,  # Adjust based on reward scale
+            penalty_growth_rate=1.5
         )
 
         self.mac = mac
