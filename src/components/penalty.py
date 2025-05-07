@@ -34,17 +34,18 @@ class StuckPenaltyRewardShaper:
             
         batch_size, seq_length, n_agents, pos_dim = positions.shape
         device = positions.device
+        self.penalty_coeffs = self.penalty_coeffs.to(device)
         
         # Initialize penalties for each agent
         per_agent_penalties = th.zeros(batch_size, seq_length, n_agents, device=device)
-        stuck_count = th.ones(batch_size, n_agents)
+        stuck_count = th.ones(batch_size, n_agents, device=device)
 
         
         # For each timestep, look back and check how long agent has been stuck
         for t in range(seq_length):
             # We can only look back up to t or max_lookback, whichever is smaller
             is_same = th.all(positions[:, t] == positions[:, t - 1], dim=-1)
-            stuck_count = th.where(is_same, stuck_count + 1, th.ones_like(stuck_count))
+            stuck_count = th.where(is_same, stuck_count + 1, th.ones_like(stuck_count,  device=device))
             stuck_count = th.clamp(stuck_count, 0, self.max_lookback)
             per_agent_penalties[:, t] = self.penalty_coeffs[stuck_count.long()]
         # Apply mask if provided
