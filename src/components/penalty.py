@@ -1,7 +1,7 @@
 import torch as th
 
 class StuckPenaltyRewardShaper:
-    def __init__(self, max_lookback=10, base_penalty=0.05, penalty_growth_rate=1.5):
+    def __init__(self, max_lookback=50, base_penalty=0.05, penalty_growth_rate=1.5):
         """
         Initialize the stuck penalty reward shaper.
         Args:
@@ -15,7 +15,7 @@ class StuckPenaltyRewardShaper:
         
         # Create penalty coefficients for different stuck durations
         self.penalty_coeffs = th.zeros(max_lookback + 1)
-        for i in range(2, max_lookback + 1):
+        for i in range(8, max_lookback + 1):
             # Start with base_penalty at 2 steps, then increase according to growth rate
             self.penalty_coeffs[i] = self.base_penalty * (self.penalty_growth_rate ** (i - 2))
     
@@ -42,7 +42,7 @@ class StuckPenaltyRewardShaper:
 
         
         # For each timestep, look back and check how long agent has been stuck
-        for t in range(seq_length):
+        for t in range(1, seq_length):
             # We can only look back up to t or max_lookback, whichever is smaller
             is_same = th.all(positions[:, t] == positions[:, t - 1], dim=-1)
             stuck_count = th.where(is_same, stuck_count + 1, th.ones_like(stuck_count,  device=device))
@@ -53,9 +53,9 @@ class StuckPenaltyRewardShaper:
             per_agent_penalties = per_agent_penalties * mask
         
         # Aggregate penalties across agents (mean) and reshape to match rewards
-        penalties = per_agent_penalties.mean(dim=2, keepdim=True)  # [batch_size, seq_length, 1]
+        #penalties = per_agent_penalties.mean(dim=2, keepdim=True)  # [batch_size, seq_length, 1]
         
-        return penalties
+        return per_agent_penalties
 
     def shape_rewards(self, rewards, positions, mask=None):
         """

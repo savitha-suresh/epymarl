@@ -17,8 +17,8 @@ class PPOLearner:
         self.n_actions = args.n_actions
         self.logger = logger
         self.stuck_penalty = StuckPenaltyRewardShaper(
-            max_lookback=10,
-            base_penalty=0.1,  # Adjust based on reward scale
+            max_lookback=20,
+            base_penalty=0.00005,  # Adjust based on reward scale
             penalty_growth_rate=1.5
         )
 
@@ -50,8 +50,7 @@ class PPOLearner:
 
         rewards = batch["reward"][:, :-1]
         positions = batch["obs"][:, :, :, 0:2]
-        if episode_num > 20:
-            rewards = self.stuck_penalty.shape_rewards(rewards, positions)
+        
         actions = batch["actions"][:, :]
         terminated = batch["terminated"][:, :-1].float()
         mask = batch["filled"][:, :-1].float()
@@ -72,6 +71,8 @@ class PPOLearner:
             # reshape rewards to be of shape (batch_size, episode_length, n_agents)
             rewards = rewards.expand(-1, -1, self.n_agents)
 
+        if episode_num > 1000:
+            rewards = self.stuck_penalty.shape_rewards(rewards, positions)
         mask = mask.repeat(1, 1, self.n_agents)
         #mask = mask * active_agents
         critic_mask = mask.clone()
