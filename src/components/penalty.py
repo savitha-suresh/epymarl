@@ -77,3 +77,78 @@ class StuckPenaltyRewardShaper:
         shaped_rewards = rewards - penalties
         
         return shaped_rewards
+    
+
+
+class OscillationPenaltyRewardShaper:
+    def __init__(self, lookback=20, osc_coeff=0.01, growth_rate=1.5):
+        """
+        Penalizes agents for revisiting the same position multiple times in the last `lookback` timesteps.
+        Args:
+            lookback: Number of timesteps to look back when computing oscillation penalty.
+            osc_coeff: Coefficient for penalty scaling based on visit counts > 1.
+        """
+        self.lookback = lookback
+        self.osc_coeff = osc_coeff
+        self.growth_rate = growth_rate
+
+    def compute_oscillation_penalties(self, positions, mask=None):
+        batch_size, seq_length, n_agents, pos_dim = positions.shape
+        device = positions.device
+        per_agent_penalties = th.zeros(batch_size, seq_length, n_agents, device=device)
+
+        for t in range(seq_length):
+            # Determine sliding window
+            start_t = max(0, t - self.lookback)
+            history = positions[:, start_t:t+1]  # [B, T_lookback, A, pos_dim]
+            history = history.transpose(1, 2)    # [B, A, T_lookback, pos_dim]
+
+            counts = th.zeros(batch_size, n_agents, device=device)
+
+            for b in range(batch_size):
+                for a in range(n_agents):
+                    pos_seq = []
+                    prev_pos = None
+
+                    # Build sequence without consecutive repeats
+                    for i in range(history.size(2)):
+                        curr_pos = tuple(history[b, a, i].tolist())
+                        if curr_pos != prev_pos:
+                            pos_seq.append(curr_pos)
+                        prev_pos = curr_pos
+
+                    # Count revisits
+                    pos_counter = {}
+                    for pos in pos_seq:
+                        pos_counter[pos] = pos_counter.get(pos, 0) + 1
+
+                    # Oscillation penalty only for positions visited >1 (excluding stuck)
+                    for c in pos_counter.values():
+                        if c > 1:
+                            counts[b, a] += self.osc_coeff * (self.growth_rate ** (c - 2))
+
+            per_agent_penalties[:, t] = counts
+
+        if mask is not None:
+            per_agent_penalties *= mask
+
+        return per_agent_penalties
+
+
+    def shape_rewards(self, rewards, positions, mask=None):
+        """
+        Apply oscillation penalties to rewards.
+        Args:
+            rewards: Tensor of shape [batch_size, seq_length, n_agents]
+            positions: Tensor of shape [batch_size, seq_length, n_agents, pos_dim]
+            mask: Optional mask of shape [batch_size, seq_length, n_agents]
+        Returns:
+            shaped_rewards: Tensor with penalties subtracted
+        """
+        penalties = self.compute_oscillation_penalties(positions, mask)
+
+        if rewards.shape != penalties.shape:
+            raise ValueError(f"Shape mismatch: rewards {rewards.shape} vs penalties {penalties.shape}")
+        
+        shaped_rewards = rewards - penalties
+        return shaped_rewards

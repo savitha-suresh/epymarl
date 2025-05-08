@@ -7,7 +7,7 @@ from torch.optim import Adam
 from components.episode_buffer import EpisodeBatch
 from components.standarize_stream import RunningMeanStd
 from modules.critics import REGISTRY as critic_resigtry
-from components.penalty import StuckPenaltyRewardShaper
+from components.penalty import StuckPenaltyRewardShaper, OscillationPenaltyRewardShaper
 
 
 class PPOLearner:
@@ -20,6 +20,11 @@ class PPOLearner:
             max_lookback=20,
             base_penalty=0.00005,  # Adjust based on reward scale
             penalty_growth_rate=1.5
+        )
+        self.osc_penalty = OscillationPenaltyRewardShaper(
+            lookback=20,
+            osc_coeff=0.00005,
+            growth_rate=1.5
         )
 
         self.mac = mac
@@ -73,6 +78,8 @@ class PPOLearner:
 
         if episode_num > 1000:
             rewards = self.stuck_penalty.shape_rewards(rewards, positions)
+        if episode_num > 1500:
+            rewards = self.osc_penalty.shape_rewards(rewards, positions)
         mask = mask.repeat(1, 1, self.n_agents)
         #mask = mask * active_agents
         critic_mask = mask.clone()
