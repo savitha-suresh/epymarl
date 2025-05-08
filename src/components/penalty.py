@@ -93,6 +93,8 @@ class OscillationPenaltyRewardShaper:
         self.growth_rate = growth_rate
 
     def compute_oscillation_penalties(self, positions, mask=None):
+        if positions.size(1) > 500:
+            positions = positions[:, :500, :, :]
         batch_size, seq_length, n_agents, pos_dim = positions.shape
         device = positions.device
         per_agent_penalties = th.zeros(batch_size, seq_length, n_agents, device=device)

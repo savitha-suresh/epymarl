@@ -78,7 +78,7 @@ class PPOLearner:
 
         if episode_num > 1000:
             rewards = self.stuck_penalty.shape_rewards(rewards, positions)
-        if episode_num > 1500:
+        if episode_num > 5000:
             rewards = self.osc_penalty.shape_rewards(rewards, positions)
         mask = mask.repeat(1, 1, self.n_agents)
         #mask = mask * active_agents
