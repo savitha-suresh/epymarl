@@ -18,12 +18,12 @@ class PPOLearner:
         self.logger = logger
         self.stuck_penalty = StuckPenaltyRewardShaper(
             max_lookback=20,
-            base_penalty=0.00005,  # Adjust based on reward scale
+            base_penalty=0.005,  # Adjust based on reward scale
             penalty_growth_rate=1.5
         )
         self.osc_penalty = OscillationPenaltyRewardShaper(
             lookback=20,
-            osc_coeff=0.00005,
+            osc_coeff=0.005,
             growth_rate=1.5
         )
 
@@ -78,7 +78,7 @@ class PPOLearner:
 
         if episode_num > 1000:
             rewards = self.stuck_penalty.shape_rewards(rewards, positions)
-        if episode_num > 5000:
+        if episode_num > 1500:
             rewards = self.osc_penalty.shape_rewards(rewards, positions)
         mask = mask.repeat(1, 1, self.n_agents)
         #mask = mask * active_agents
