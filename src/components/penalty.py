@@ -126,7 +126,7 @@ class OscillationPenaltyRewardShaper:
 
                     # Oscillation penalty only for positions visited >1 (excluding stuck)
                     for c in pos_counter.values():
-                        if c > 1:
+                        if c > 4:
                             counts[b, a] += self.osc_coeff * (self.growth_rate ** (c - 2))
 
             per_agent_penalties[:, t] = counts
