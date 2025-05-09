@@ -18,6 +18,7 @@ class TransformerPPOLearner(PPOLearner):
         # Get the relevant quantities
 
         rewards = batch["reward"][:, :-1]
+        positions = batch["obs"][:, :, :, 0:2]
         actions = batch["actions"][:, :]
         terminated = batch["terminated"][:, :-1].float()
         mask = batch["filled"][:, :-1].float()
@@ -37,7 +38,10 @@ class TransformerPPOLearner(PPOLearner):
             ), "Expected singular agent dimension for common rewards"
             # reshape rewards to be of shape (batch_size, episode_length, n_agents)
             rewards = rewards.expand(-1, -1, self.n_agents)
-
+        if episode_num > 1000:
+            rewards = self.stuck_penalty.shape_rewards(rewards, positions)
+        if episode_num > 1500:
+            rewards = self.osc_penalty.shape_rewards(rewards, positions)
         mask = mask.repeat(1, 1, self.n_agents)
         #mask = mask * active_agents
         critic_mask = mask.clone()

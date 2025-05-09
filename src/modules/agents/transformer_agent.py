@@ -50,7 +50,7 @@ class TransformerAgent(nn.Module):
                                 .masked_fill(causal_mask == 1, float(0.0))
         x = F.relu(self.fc1(inputs))  
         x = self.pos_enc(x)  
-        x = self.transformer_encoder(x, mask=causal_mask)  # (batch_size, seq_len, d_model)
+        x = self.transformer_encoder(x, mask=causal_mask, is_causal=True)  # (batch_size, seq_len, d_model)
 
         
         q = self.fc2(x)
