@@ -31,7 +31,7 @@ class BasicMAC:
             avail_actions = avail_actions[:, t]
             reshaped_avail_actions = avail_actions.reshape(ep_batch.batch_size * self.n_agents, -1)
         else:
-            avail_actions = avail_actions[:, :ep_batch.max_seq_length-1, :, :]
+            avail_actions = avail_actions[:, :ep_batch.max_seq_length, :, :]
             avail_actions = avail_actions.permute(0, 2, 1, 3)
             reshaped_avail_actions = avail_actions.reshape(ep_batch.batch_size * self.n_agents, *avail_actions.shape[2:])
  
