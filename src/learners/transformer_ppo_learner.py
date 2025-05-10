@@ -16,7 +16,8 @@ class TransformerPPOLearner(PPOLearner):
 
     def train(self, batch: EpisodeBatch, t_env: int, episode_num: int):
         # Get the relevant quantities
-
+        self.mac.agent.train()
+        self.old_mac.agent.train()
         rewards = batch["reward"][:, :-1]
         positions = batch["obs"][:, :, :, 0:2]
         actions = batch["actions"][:, :]

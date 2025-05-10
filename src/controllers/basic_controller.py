@@ -19,6 +19,7 @@ class BasicMAC:
     def select_actions(self, ep_batch, t_ep, t_env, bs=slice(None), test_mode=False):
         # Only select actions for the selected batch elements in bs
         avail_actions = ep_batch["avail_actions"]
+        self.agent.eval()
         agent_outputs = self.forward(ep_batch, t_ep, test_mode=test_mode)
         chosen_actions = self.action_selector.select_action(
             agent_outputs[bs], avail_actions[bs], t_env, test_mode=test_mode)
