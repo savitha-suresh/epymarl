@@ -2,6 +2,7 @@ import re
 import json
 import os
 from datetime import datetime
+import sys
 
 def process_file(file_path, output_dir, chunk_size=100):
     """
@@ -123,7 +124,12 @@ def write_to_json(data, output_dir, file_counter):
     print(f"Wrote {len(data)} environment entries to {filepath}")
 
 def main():
-    file_path = 'observation_rware:rware-tiny-4ag-v2_1_1746771696.238467.log'  # Replace with your actual file path
+    if len(sys.argv) < 2:
+        print("Usage: python filter_obs.py <file_path>")
+        sys.exit(1)
+
+    file_path = sys.argv[1]
+    #file_path = 'observation_rware:rware-tiny-4ag-v2_1_1746861355.5836391.log'  # Replace with your actual file path
     output_dir = 'output_json'  # Directory to save JSON files
     chunk_size = 10000  # Number of Env: 0 entries to process before writing
     
