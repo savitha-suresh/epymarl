@@ -31,7 +31,6 @@ class BasicMAC:
             avail_actions = avail_actions[:, t]
             reshaped_avail_actions = avail_actions.reshape(ep_batch.batch_size * self.n_agents, -1)
         else:
-            avail_actions = avail_actions[:, 1:, :, :]
             avail_actions = avail_actions.permute(0, 2, 1, 3)
             reshaped_avail_actions = avail_actions.reshape(ep_batch.batch_size * self.n_agents, *avail_actions.shape[2:])
  
@@ -50,6 +49,7 @@ class BasicMAC:
             else:
                 B, T, F = agent_outs.shape
                 agent_outs_view = agent_outs.view(ep_batch.batch_size, T, self.n_agents, F)
+                agent_outs_view = agent_outs_view[:, :-1, :, :]
         return agent_outs_view
 
     def init_hidden(self, batch_size):

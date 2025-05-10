@@ -123,5 +123,4 @@ class TransformerAgent(nn.Module):
         x = self.output_norm(x)
 
         q = self.fc2(x)                # Predict Q-values
-        print("q", q.shape)
         return q, None
