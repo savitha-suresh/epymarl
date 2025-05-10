@@ -122,5 +122,6 @@ class TransformerAgent(nn.Module):
         x = self.transformer_encoder(x, mask=causal_mask, is_causal=True)  # Residuals + LN handled internally
         x = self.output_norm(x)
 
-        q = self.fc2(x)                     # Predict Q-values
+        q = self.fc2(x)                # Predict Q-values
+        print("q", q.shape)
         return q, None
