@@ -20,33 +20,37 @@ class BasicMAC:
         # Only select actions for the selected batch elements in bs
         avail_actions = ep_batch["avail_actions"]
         agent_outputs = self.forward(ep_batch, t_ep, test_mode=test_mode)
-        if t_ep >=500:
-            t_ep = 499
-        agent_outputs = agent_outputs[:, t_ep,  :, :]
         chosen_actions = self.action_selector.select_action(
             agent_outputs[bs], avail_actions[bs], t_env, test_mode=test_mode)
         return chosen_actions
 
     def forward(self, ep_batch, t=None, test_mode=False):
-        agent_inputs = self._build_inputs(ep_batch)
-        
+        agent_inputs = self._build_inputs(ep_batch, max_seq=t)
         avail_actions = ep_batch["avail_actions"]
-        avail_actions =  avail_actions[:, :500, :, :]
+        if t is not None:
+            avail_actions = avail_actions[:, t]
+            reshaped_avail_actions = avail_actions.reshape(ep_batch.batch_size * self.n_agents, -1)
+        else:
+            avail_actions = avail_actions[:, :ep_batch.max_seq_length-1, :, :]
+            avail_actions = avail_actions.permute(0, 2, 1, 3)
+            reshaped_avail_actions = avail_actions.reshape(ep_batch.batch_size * self.n_agents, *avail_actions.shape[2:])
+ 
         agent_outs, self.hidden_states = self.agent(agent_inputs, self.hidden_states)
-
+        if t is not None:
+            agent_outs = agent_outs[:, t]
     
         if self.agent_output_type == "pi_logits":
 
             if getattr(self.args, "mask_before_softmax", True):
-                # Make the logits for unavailable actions very negative to minimise their affect on the softmax
-            
-                avail_actions = avail_actions.permute(0, 2,1,3)
-                reshaped_avail_actions = avail_actions.reshape(ep_batch.batch_size * self.n_agents, agent_outs.size(1), agent_outs.size(2))
-                
+                # Make the logits for unavailable actions very negative to minimise their affect on the softma
                 agent_outs[reshaped_avail_actions == 0] = -1e10
             agent_outs = th.nn.functional.softmax(agent_outs, dim=-1)
-            B, T, F = agent_outs.shape
-        return agent_outs.view(ep_batch.batch_size, T, self.n_agents, F)
+            if t is not None:
+                agent_outs_view = agent_outs.view(ep_batch.batch_size, self.n_agents, -1)
+            else:
+                B, T, F = agent_outs.shape
+                agent_outs_view = agent_outs.view(ep_batch.batch_size, T, self.n_agents, F)
+        return agent_outs_view
 
     def init_hidden(self, batch_size):
         self.hidden_states = self.agent.init_hidden().unsqueeze(0).expand(batch_size, self.n_agents, -1)  # bav
@@ -69,12 +73,14 @@ class BasicMAC:
     def _build_agents(self, input_shape):
         self.agent = agent_REGISTRY[self.args.agent](input_shape, self.args)
 
-    def _build_inputs(self, batch):
+    def _build_inputs(self, batch, max_seq=None):
         # Assumes homogenous agents with flat observations.
         # Other MACs might want to e.g. delegate building inputs to each agent
         bs = batch.batch_size
         all_inputs = []
-        for t in range(batch.max_seq_length-1):
+        if max_seq is None:
+            max_seq = batch.max_seq_length - 1
+        for t in range(max_seq+1):
             
             inputs = []
             inputs.append(batch["obs"][:, t])  # b1av
@@ -88,6 +94,7 @@ class BasicMAC:
 
             inputs = th.cat([x.reshape(bs*self.n_agents, -1) for x in inputs], dim=1)
             all_inputs.append(inputs)
+        
         all_inputs = th.stack(all_inputs, dim=1)
         return all_inputs
 
