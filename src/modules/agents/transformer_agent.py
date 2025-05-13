@@ -1,6 +1,54 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from einops import rearrange
+
+
+class GRUGate(nn.Module):
+    """
+    Overview:
+        GRU Gating Unit used in GTrXL.
+        Inspired by https://github.com/dhruvramani/Transformers-RL/blob/master/layers.py
+    """
+
+    def __init__(self, input_dim: int, bg: float = 0.0):
+        """
+        Arguments:
+            input_dim {int} -- Input dimension
+            bg {float} -- Initial gate bias value. By setting bg > 0 we can explicitly initialize the gating mechanism to
+            be close to the identity map. This can greatly improve the learning speed and stability since it
+            initializes the agent close to a Markovian policy (ignore attention at the beginning). (default: {0.0})
+        """
+        super(GRUGate, self).__init__()
+        self.Wr = nn.Linear(input_dim, input_dim, bias=False)
+        self.Ur = nn.Linear(input_dim, input_dim, bias=False)
+        self.Wz = nn.Linear(input_dim, input_dim, bias=False)
+        self.Uz = nn.Linear(input_dim, input_dim, bias=False)
+        self.Wg = nn.Linear(input_dim, input_dim, bias=False)
+        self.Ug = nn.Linear(input_dim, input_dim, bias=False)
+        self.bg = nn.Parameter(torch.full([input_dim], bg))  # bias
+        self.sigmoid = nn.Sigmoid()
+        self.tanh = nn.Tanh()
+        nn.init.xavier_uniform_(self.Wr.weight)
+        nn.init.xavier_uniform_(self.Ur.weight)
+        nn.init.xavier_uniform_(self.Wz.weight)
+        nn.init.xavier_uniform_(self.Uz.weight)
+        nn.init.xavier_uniform_(self.Wg.weight)
+        nn.init.xavier_uniform_(self.Ug.weight)
+
+    def forward(self, x: torch.Tensor, y: torch.Tensor):
+        """        
+        Arguments:
+            x {torch.tensor} -- First input
+            y {torch.tensor} -- Second input
+        Returns:
+            {torch.tensor} -- Output
+        """
+        r = self.sigmoid(self.Wr(y) + self.Ur(x))
+        z = self.sigmoid(self.Wz(y) + self.Uz(x) - self.bg)
+        h = self.tanh(self.Wg(y) + self.Ug(torch.mul(r, x)))
+        return torch.mul(1 - z, x) + torch.mul(z, h)
+    
 
 class LearnedPositionalEncoding(nn.Module):
     def __init__(self, d_model, max_len=500):
@@ -67,7 +115,10 @@ class DecoderOnlyBlock(nn.Module):
         self.norm_first = norm_first
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
-        
+        self.gate1 = GRUGate(d_model, 0.0)
+        self.gate2 = GRUGate(d_model, 0.0)
+        self.norm_kv = nn.LayerNorm(d_model)
+
         self.self_attn = nn.MultiheadAttention(
             embed_dim=d_model,
             num_heads=nhead,
@@ -87,16 +138,20 @@ class DecoderOnlyBlock(nn.Module):
     def forward(self, x, mask=None):
         if self.norm_first:
             # Pre-norm architecture
-            attn_output = x + self.dropout(self.self_attn(
-                self.norm1(x), self.norm1(x), self.norm1(x), 
+            attn_op  = self.dropout(self.self_attn(
+                self.norm1(x), self.norm_kv(x), self.norm1(x), 
                 attn_mask=mask, need_weights=False
             )[0])
-            output = attn_output + self.dropout(self.ffn(self.norm2(attn_output)))
-        else:
-            # Post-norm architecture
-            attn_output = self.norm1(x + self.dropout(self.self_attn(
-                x, x, x, attn_mask=mask, need_weights=False
-            )[0]))
-            output = self.norm2(attn_output + self.dropout(self.ffn(attn_output)))
+            h = self.gate1(x, attn_op)
+            h_ = self.norm2(h)
+            forward = self.ffn(h_)
+            out = self.gate2(h, forward)
             
-        return output
+        # else:
+        #     # Post-norm architecture
+        #     attn_output = self.norm1(x + self.dropout(self.self_attn(
+        #         x, x, x, attn_mask=mask, need_weights=False
+        #     )[0]))
+        #     output = self.norm2(attn_output + self.dropout(self.ffn(attn_output)))
+            
+        return out

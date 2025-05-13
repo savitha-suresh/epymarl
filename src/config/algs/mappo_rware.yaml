@@ -12,8 +12,8 @@ batch_size: 10
 # update the target network every {} training steps
 target_update_interval_or_tau: 0.01
 
-lr: 0.000005
-hidden_dim: 128
+lr: 3.0e-4
+hidden_dim: 64
 
 obs_agent_id: True
 obs_last_action: False
@@ -45,5 +45,5 @@ action_fault: False # if true then agent should be rnn not rnn_faulty
 constrained_faults: False # to stall an agent only in the row above goal
 faulty_row: 9
 max_seq_len: 501
-n_heads: 4
-n_layers: 2
+n_heads: 1
+n_layers: 4
