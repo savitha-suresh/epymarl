@@ -37,7 +37,7 @@ class BasicMAC:
  
         agent_outs, self.hidden_states = self.agent(agent_inputs, self.hidden_states)
         if t is not None:
-            agent_outs = agent_outs[:, -1]
+            agent_outs = agent_outs[:, t]
     
         if self.agent_output_type == "pi_logits":
 
