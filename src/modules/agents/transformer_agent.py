@@ -69,7 +69,7 @@ class TransformerAgent(nn.Module):
         self.input_norm = nn.LayerNorm(args.hidden_dim)  # Normalize inputs
         self.dropout = nn.Dropout(0.1)
         self.pos_enc = LearnedPositionalEncoding(args.hidden_dim, max_len=self.max_seq_len)
-        
+        self.n_layers = args.n_layers
         # Create decoder blocks without cross-attention (more like GPT architecture)
         self.layers = nn.ModuleList([DecoderOnlyBlock(
             d_model=args.hidden_dim,
@@ -78,17 +78,21 @@ class TransformerAgent(nn.Module):
             dropout=0.1,
             norm_first=True
         ) for _ in range(args.n_layers)])
+        self.mem_len = args.max_seq_len
         
         self.output_norm = nn.LayerNorm(args.hidden_dim)
         self.fc2 = nn.Linear(args.hidden_dim, args.n_actions)
+        self.memories = [None for _ in range(args.n_layers)]
 
     def init_hidden(self):
-        return self.fc1.weight.new_zeros(1, self.args.hidden_dim)
+        self.memories = [None for _ in range(self.n_layers)]
 
-    def forward(self, inputs, hidden_state=None):
+    def forward(self, inputs, memory=None):
         # inputs: (batch_size, seq_len, input_dim)
-        seq_len = inputs.size(1)
+        new_memory = []     
         
+        
+        x = inputs
         # Process inputs
         x = F.relu(self.fc1(inputs))
         x = self.input_norm(x)
@@ -96,16 +100,36 @@ class TransformerAgent(nn.Module):
         x = self.pos_enc(x)
         
         # Create causal attention mask
-        causal_mask = torch.triu(
-            torch.full((seq_len, seq_len), float('-inf'), device=inputs.device), diagonal=1
-        )
+        # causal_mask = torch.triu(
+        #     torch.full((seq_len, seq_len), float('-inf'), device=inputs.device), diagonal=1
+        # )
+        
         
         # Process through decoder-only blocks
-        for layer in self.layers:
-            x = layer(x, causal_mask)
+        for i, layer in enumerate(self.layers):
+            mem = self.memories[i]  # shape: [B, mem_len, D]
+            seq_len = x.shape[1]
+            if mem is not None:
+                seq_len = mem.shape[1] + x.shape[1]
             
-        x = self.output_norm(x)
+            mask = torch.triu(
+                torch.full((seq_len, seq_len), float('-inf'), device=x.device),
+                diagonal=1
+            )
+            if mem is not None:
+                x_cat = torch.cat([mem, x], dim=1)  # [B, mem_len+1, D]
+            else:
+                x_cat = x
+
+            x_out = layer(x_cat, mask=mask)  # apply self-attention
+            x = x_out[:, -inputs.size(1):]  # [B, seq_len, D]
+
+            # update memory (keep only latest mem_len)
+            new_mem = x_cat[:, -self.mem_len:]
+            new_memory.append(new_mem)
+        self.memories = new_memory
         q = self.fc2(x)
+        
         return q, None
 
 # Helper class for GPT-style implementation
@@ -139,7 +163,7 @@ class DecoderOnlyBlock(nn.Module):
         if self.norm_first:
             # Pre-norm architecture
             attn_op  = self.dropout(self.self_attn(
-                self.norm1(x), self.norm_kv(x), self.norm1(x), 
+                self.norm1(x), self.norm_kv(x), self.norm_kv(x), 
                 attn_mask=mask, need_weights=False
             )[0])
             h = self.gate1(x, attn_op)
