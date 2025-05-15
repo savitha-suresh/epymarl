@@ -48,14 +48,15 @@ class TransformerPPOLearner(PPOLearner):
         critic_mask = mask.clone()
 
         
+        old_mac_out = []
         self.old_mac.init_hidden(batch.batch_size)
-        old_mac_out = self.old_mac.forward(batch)
-        
-        old_pi = old_mac_out.clone()
+        for t in range(batch.max_seq_length - 1):
+            agent_outs = self.old_mac.forward(batch, t=t)
+            old_mac_out.append(agent_outs)
+        old_mac_out = th.stack(old_mac_out, dim=1)  # Concat over time
+        old_pi = old_mac_out
     
 
-        
-        
         old_pi[mask == 0] = 1.0
 
         old_pi_taken = th.gather(old_pi, dim=3, index=actions).squeeze(3)
@@ -63,16 +64,14 @@ class TransformerPPOLearner(PPOLearner):
 
         for k in range(self.args.epochs):
             
+            mac_out = []
             self.mac.init_hidden(batch.batch_size)
-        
-            # For transformer agent, we need to reshape the input
-            
-            mac_out = self.mac.forward(batch)
-            
-            pi = mac_out.clone()
+            for t in range(batch.max_seq_length - 1):
+                agent_outs = self.mac.forward(batch, t=t)
+                mac_out.append(agent_outs)
+            mac_out = th.stack(mac_out, dim=1)  # Concat over time
             
             
-           
             advantages, critic_train_stats = self.train_critic_sequential(
                 self.critic, self.target_critic, batch, rewards, critic_mask, actions
             )
