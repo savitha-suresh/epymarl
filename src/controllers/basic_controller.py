@@ -81,7 +81,7 @@ class BasicMAC:
         }
 
         agent_pos = obs_t[:, :, 0:2]
-        lookup = th.full((3, 3), -1, dtype=th.long)  # shape [3, 3]
+        lookup = th.full((3, 3), -1, dtype=th.long, device=obs.device)  # shape [3, 3]
         for (dy, dx), idx in grid_index_map.items():
             lookup[dy + 1, dx + 1] = idx  # shift -1:1 to 0:2
         for faulty_idx in faulty_indices:
@@ -103,7 +103,7 @@ class BasicMAC:
             dx = (rel_pos[..., 1] + 1).long()
 
             # For now set to -1, then overwrite visible positions
-            obs_idx = th.full((bs, self.n_agents), -1, dtype=th.long)
+            obs_idx = th.full((bs, self.n_agents), -1, dtype=th.long, device=obs.device)
             obs_idx[visible_mask] = lookup[dy[visible_mask], dx[visible_mask]]  # shape (10, 4)
 
             # Prepare indexing to scatter add
