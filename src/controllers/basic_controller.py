@@ -107,8 +107,8 @@ class BasicMAC:
             obs_idx[visible_mask] = lookup[dy[visible_mask], dx[visible_mask]]  # shape (10, 4)
 
             # Prepare indexing to scatter add
-            env_ids = th.arange(bs).unsqueeze(1).expand(-1, self.n_agents).flatten()
-            agent_ids = th.arange(self.n_agents).unsqueeze(0).expand(bs, -1).flatten()
+            env_ids = th.arange(bs).unsqueeze(1).expand(-1, self.n_agents).flatten().to(obs.device)
+            agent_ids = th.arange(self.n_agents).unsqueeze(0).expand(bs, -1).flatten().to(obs.device)
             obs_idx_flat = obs_idx.flatten()
             
 
