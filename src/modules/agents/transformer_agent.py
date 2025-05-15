@@ -78,7 +78,7 @@ class TransformerAgent(nn.Module):
             dropout=0.1,
             norm_first=True
         ) for _ in range(args.n_layers)])
-        self.mem_len = args.max_seq_len
+        self.mem_len = 200
         
         self.output_norm = nn.LayerNorm(args.hidden_dim)
         self.fc2 = nn.Linear(args.hidden_dim, args.n_actions)
@@ -100,10 +100,8 @@ class TransformerAgent(nn.Module):
                 h= h.detach()
                 mem = mem.detach()
                 combined = torch.cat([mem, h], dim=1)
-                new_memory.append(combined[:, -self.mem_len:].detach())           
-            torch.cuda.empty_cache()
-            gc.collect()
-            print(torch.cuda.memory_summary())
+                new_memory.append(combined[:, -self.mem_len:].detach())
+                
             return new_memory
         
         
