@@ -94,11 +94,13 @@ class TransformerAgent(nn.Module):
 
     def update_memory(self, memory, hidden_states):
         # Save only last `max_mem_len` timesteps
-        new_memory = []
-        for mem, h in zip(memory, hidden_states):
-            combined = torch.cat([mem, h], dim=1)
-            new_memory.append(combined[:, -self.mem_len:].detach())
-        return new_memory
+        with torch.no_grad():
+            new_memory = []
+            for mem, h in zip(memory, hidden_states):
+                h= h.detach()
+                combined = torch.cat([mem, h], dim=1)
+                new_memory.append(combined[:, -self.mem_len:].detach())
+            return new_memory
     
     def forward(self, inputs, memory=None, attn_mask=None):
         # inputs: (batch_size, seq_len, input_dim)
@@ -115,7 +117,7 @@ class TransformerAgent(nn.Module):
         for i, layer in enumerate(self.layers):
             mem = None if memory is None else memory[i]
             x = layer(x, memory=mem, attn_mask=attn_mask)
-            hidden_states.append(x)
+            hidden_states.append(x.detach())
 
         x = self.output_norm(x)
         q = self.fc2(x)
