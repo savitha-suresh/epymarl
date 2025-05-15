@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
-
+import gc
 
 class GRUGate(nn.Module):
     """
@@ -98,9 +98,15 @@ class TransformerAgent(nn.Module):
             new_memory = []
             for mem, h in zip(memory, hidden_states):
                 h= h.detach()
+                mem = mem.detach()
                 combined = torch.cat([mem, h], dim=1)
-                new_memory.append(combined[:, -self.mem_len:].detach())
+                new_memory.append(combined[:, -self.mem_len:].detach())           
+            torch.cuda.empty_cache()
+            gc.collect()
+            print(torch.cuda.memory_summary())
             return new_memory
+        
+        
     
     def forward(self, inputs, memory=None, attn_mask=None):
         # inputs: (batch_size, seq_len, input_dim)
@@ -117,7 +123,7 @@ class TransformerAgent(nn.Module):
         for i, layer in enumerate(self.layers):
             mem = None if memory is None else memory[i]
             x = layer(x, memory=mem, attn_mask=attn_mask)
-            hidden_states.append(x.detach())
+            hidden_states.append(x.detach().clone())
 
         x = self.output_norm(x)
         q = self.fc2(x)
