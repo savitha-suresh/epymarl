@@ -52,7 +52,8 @@ class PPOLearner:
 
     def train(self, batch: EpisodeBatch, t_env: int, episode_num: int):
         # Get the relevant quantities
-
+        self.old_mac.agent.train()
+        self.mac.agent.train()
         rewards = batch["reward"][:, :-1]
         
         positions = batch["obs"][:, :, :, 0:2]
