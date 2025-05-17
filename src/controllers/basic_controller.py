@@ -39,8 +39,8 @@ class BasicMAC:
         mask = self.build_causal_mask(
             seq_len=agent_inputs.size(1), 
             mem_len=mem_len_now, device=agent_inputs.device)  # [1, mem_len + 1]
-        mask = mask.unsqueeze(0).expand(ep_batch.batch_size * self.n_agents, -1, -1)  # [n_agents, 1, mem_len+1]
-
+        mask = mask.unsqueeze(0).unsqueeze(1)  # [1, 1, seq_len, total_len]
+        mask = mask.expand(ep_batch.batch_size * self.n_agents, self.args.n_heads, -1, -1)
         agent_outs, hidden_states = self.agent(agent_inputs, memory=memory, attn_mask=mask)
         self.memory = self.agent.update_memory(memory, hidden_states)
         # Softmax the agent outputs if they're policy logits
