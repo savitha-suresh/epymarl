@@ -8,6 +8,7 @@ from components.episode_buffer import EpisodeBatch
 from components.standarize_stream import RunningMeanStd
 from modules.critics import REGISTRY as critic_resigtry
 from components.penalty import StuckPenaltyRewardShaper, OscillationPenaltyRewardShaper
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
 
 class PPOLearner:
@@ -31,6 +32,8 @@ class PPOLearner:
         self.old_mac = copy.deepcopy(mac)
         self.agent_params = list(mac.parameters())
         self.agent_optimiser = Adam(params=self.agent_params, lr=args.lr)
+        self.agent_scheduler = CosineAnnealingWarmRestarts(
+            self.agent_optimiser, T_0=1000)
 
         self.critic = critic_resigtry[args.critic_type](scheme, args)
         self.target_critic = copy.deepcopy(self.critic)
@@ -141,6 +144,8 @@ class PPOLearner:
                 self.agent_params, self.args.grad_norm_clip
             )
             self.agent_optimiser.step()
+            self.agent_scheduler.step()
+
 
         self.old_mac.load_state(self.mac)
 

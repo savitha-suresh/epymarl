@@ -3,6 +3,92 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 import gc
+import math
+
+def get_pos_encoding(seq_len, d_model):
+    position = torch.arange(seq_len, dtype=torch.float32).unsqueeze(1)  # (seq_len, 1)
+    div_term = torch.arange(0, d_model, 2, dtype=torch.float32) / d_model
+    div_term = 1.0 / (10000.0 ** div_term)  # (d_model // 2,)
+
+    # Repeat to interleave for even and odd dimensions
+    div_term = div_term.repeat_interleave(2).unsqueeze(0)  # (1, d_model)
+
+    encoding = position @ div_term  # (seq_len, d_model)
+
+    encoding[:, 0::2] = torch.sin(encoding[:, 0::2])
+    encoding[:, 1::2] = torch.cos(encoding[:, 1::2])
+
+    return encoding  # (seq_len, d_model)
+
+
+
+class RelativeMultiHeadAttention(nn.Module):
+    def __init__(self, d_model, n_heads, max_seq_len):
+        super(RelativeMultiHeadAttention, self).__init__()
+        assert d_model % n_heads == 0
+        self.max_seq_len = max_seq_len
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.d_head = d_model // n_heads
+        self.sqrt_dk = math.sqrt(d_model)
+
+        self.w_q = nn.Linear(d_model, d_model, bias=False)
+        self.w_k_e = nn.Linear(d_model, d_model, bias=False)
+        self.w_k_r = nn.Linear(d_model, d_model, bias=False)
+        self.w_v = nn.Linear(d_model, d_model, bias=False)
+
+        self.final = nn.Sequential(
+            nn.Linear(d_model, d_model, bias=False),
+            nn.GELU()
+        )
+        self.pos_enc = get_pos_encoding(self.max_seq_len, self.d_model)
+        self.u_param = nn.Parameter(torch.randn(1, 1, n_heads, self.d_head))
+        self.v_param = nn.Parameter(torch.randn(1, 1, n_heads, self.d_head))
+
+    def rel_enc_shift(self, arr):
+        # arr: (batch_size, num_heads, l, m)
+        batch_size, num_heads, l, m = arr.size()
+        zeros = torch.zeros(batch_size, num_heads, l, 1, device=arr.device, dtype=arr.dtype)
+        arr = torch.cat([arr, zeros], dim=-1)
+        arr = arr.view(batch_size, num_heads, -1)
+        arr = arr[:, :, l-1: -1]
+        arr = arr.view(batch_size, num_heads, l, m)
+        return arr
+
+    def forward(self, query, key, value, attn_mask):
+       
+         
+        batch_size, full_len, _ = value.size()
+          # (batch_size, seq_len, d_model)
+        _, seq_len, _ = query.size()
+        rel_enc = self.pos_enc[:full_len, :]
+        rel_enc = torch.flip(rel_enc, dims=[0]) 
+
+        q = self.w_q(query).view(batch_size, seq_len, self.n_heads, self.d_head)
+        k = self.w_k_e(key).view(batch_size, full_len, self.n_heads, self.d_head)
+        v = self.w_v(value).view(batch_size, full_len, self.n_heads, self.d_head)
+
+        A_C = torch.einsum('bsnd,bfnd->bnsf', q + self.u_param, k)
+
+        Q = self.w_k_r(rel_enc)  # (full_len, d_model)
+        Q = Q.view(full_len, self.n_heads, self.d_head)
+        B_D_hat = torch.einsum('bsnd,fnd->bnsf', q + self.v_param, Q)
+        B_D = self.rel_enc_shift(B_D_hat)
+
+        attention_score = (A_C + B_D) / self.sqrt_dk
+        attention_score += attn_mask
+
+        attention_weights = F.softmax(attention_score, dim=-1)
+        max_weights = attention_weights.max(dim=-1).values.max(dim=-1).values
+        attention_loss = max_weights.mean()
+
+        attention_output = torch.einsum('bnsf,bfnd->bsnd', attention_weights, v)
+        attention_output = attention_output.contiguous().view(batch_size, seq_len, self.d_model)
+
+        output = self.final(attention_output)
+        return output, attention_weights, attention_loss
+
+
 
 class GRUGate(nn.Module):
     """
@@ -50,15 +136,6 @@ class GRUGate(nn.Module):
         return torch.mul(1 - z, x) + torch.mul(z, h)
     
 
-class LearnedPositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_len=500):
-        super().__init__()
-        self.pos_embedding = nn.Embedding(max_len, d_model)
-    
-    def forward(self, x):
-        seq_len = x.size(1)
-        positions = torch.arange(seq_len, device=x.device).unsqueeze(0)
-        return x + self.pos_embedding(positions)
 
 class TransformerAgent(nn.Module):
     def __init__(self, input_shape, args):
@@ -67,16 +144,14 @@ class TransformerAgent(nn.Module):
         self.max_seq_len = args.max_seq_len
         self.fc1 = nn.Linear(input_shape, args.hidden_dim)  # Projects input to model dim
         self.input_norm = nn.LayerNorm(args.hidden_dim)  # Normalize inputs
-        self.dropout = nn.Dropout(0.1)
-        self.pos_enc = LearnedPositionalEncoding(args.hidden_dim, max_len=self.max_seq_len)
         self.n_layers = args.n_layers
         # Create decoder blocks without cross-attention (more like GPT architecture)
         self.layers = nn.ModuleList([DecoderOnlyBlock(
             d_model=args.hidden_dim,
             nhead=args.n_heads,
             dim_feedforward=args.hidden_dim * 4,
-            dropout=0.1,
-            norm_first=True
+            norm_first=True,
+            max_seq_len=self.max_seq_len
         ) for _ in range(args.n_layers)])
         self.mem_len = 100
         
@@ -115,8 +190,6 @@ class TransformerAgent(nn.Module):
         # Process inputs
         x = F.relu(self.fc1(inputs))
         x = self.input_norm(x)
-        x = self.dropout(x)
-        x = self.pos_enc(x)
         
         for i, layer in enumerate(self.layers):
             mem = None if memory is None else memory[i]
@@ -130,7 +203,7 @@ class TransformerAgent(nn.Module):
 
 # Helper class for GPT-style implementation
 class DecoderOnlyBlock(nn.Module):
-    def __init__(self, d_model, nhead, dim_feedforward, dropout, norm_first):
+    def __init__(self, d_model, nhead, dim_feedforward, norm_first, max_seq_len):
         super(DecoderOnlyBlock, self).__init__()
         self.norm_first = norm_first
         self.norm1 = nn.LayerNorm(d_model)
@@ -139,21 +212,19 @@ class DecoderOnlyBlock(nn.Module):
         self.gate2 = GRUGate(d_model, 0.0)
         self.norm_kv = nn.LayerNorm(d_model)
 
-        self.self_attn = nn.MultiheadAttention(
-            embed_dim=d_model,
-            num_heads=nhead,
-            dropout=dropout,
-            batch_first=True
+        self.self_attn = RelativeMultiHeadAttention(
+            d_model=d_model,
+            n_heads=nhead,
+            max_seq_len=max_seq_len,
         )
         
         self.ffn = nn.Sequential(
             nn.Linear(d_model, dim_feedforward),
             nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(dim_feedforward, d_model)
+            nn.Linear(dim_feedforward, d_model),
+            nn.ReLU()
         )
         
-        self.dropout = nn.Dropout(dropout)
         
     def forward(self, x, memory, attn_mask=None):
         
@@ -162,10 +233,10 @@ class DecoderOnlyBlock(nn.Module):
             x_cat = torch.cat([memory, x], dim=1)
         else:
             x_cat = x
-        attn_op  = self.dropout(self.self_attn(
+        attn_op  = self.self_attn(
             self.norm1(x), self.norm_kv(x_cat), self.norm_kv(x_cat), 
-            attn_mask=attn_mask, need_weights=False
-        )[0])
+            attn_mask=attn_mask
+        )[0]
         h = self.gate1(x, attn_op)
         h_ = self.norm2(h)
         forward = self.ffn(h_)
