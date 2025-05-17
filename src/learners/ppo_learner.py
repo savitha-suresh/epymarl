@@ -8,7 +8,7 @@ from components.episode_buffer import EpisodeBatch
 from components.standarize_stream import RunningMeanStd
 from modules.critics import REGISTRY as critic_resigtry
 from components.penalty import StuckPenaltyRewardShaper, OscillationPenaltyRewardShaper
-from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 
 class PPOLearner:
@@ -32,8 +32,8 @@ class PPOLearner:
         self.old_mac = copy.deepcopy(mac)
         self.agent_params = list(mac.parameters())
         self.agent_optimiser = Adam(params=self.agent_params, lr=args.lr)
-        self.agent_scheduler = CosineAnnealingWarmRestarts(
-            self.agent_optimiser, T_0=1000)
+        self.agent_scheduler = CosineAnnealingLR(
+            self.agent_optimiser, T_max=self.args.t_max)
 
         self.critic = critic_resigtry[args.critic_type](scheme, args)
         self.target_critic = copy.deepcopy(self.critic)
@@ -45,6 +45,7 @@ class PPOLearner:
         self.last_target_update_step = 0
         self.critic_training_steps = 0
         self.log_stats_t = -self.args.learner_log_interval - 1
+        self.segment_len = 50
 
         device = "cuda" if args.use_cuda else "cpu"
         if self.args.standardise_returns:
@@ -89,10 +90,11 @@ class PPOLearner:
 
         old_mac_out = []
         self.old_mac.init_hidden(batch.batch_size)
-        for t in range(batch.max_seq_length - 1):
-            agent_outs = self.old_mac.forward(batch, t=t)
+        for t in range(0, batch.max_seq_length - 1, self.segment_len):
+            t_end = min(t + self.segment_len, batch.max_seq_length - 1)
+            agent_outs = self.old_mac.forward(batch, t=t, t_end=t_end)
             old_mac_out.append(agent_outs)
-        old_mac_out = th.stack(old_mac_out, dim=1)  # Concat over time
+        old_mac_out = th.cat(old_mac_out, dim=1)  # Concat over time
         old_pi = old_mac_out
         old_pi[mask == 0] = 1.0
 
@@ -102,10 +104,11 @@ class PPOLearner:
         for k in range(self.args.epochs):
             mac_out = []
             self.mac.init_hidden(batch.batch_size)
-            for t in range(batch.max_seq_length - 1):
-                agent_outs = self.mac.forward(batch, t=t)
+            for t in range(0, batch.max_seq_length - 1, self.segment_len):
+                t_end = min(t + self.segment_len, batch.max_seq_length - 1)
+                agent_outs = self.mac.forward(batch, t=t, t_end=t_end)
                 mac_out.append(agent_outs)
-            mac_out = th.stack(mac_out, dim=1)  # Concat over time
+            mac_out = th.cat(mac_out, dim=1)  # Concat over time
 
             pi = mac_out
             advantages, critic_train_stats = self.train_critic_sequential(

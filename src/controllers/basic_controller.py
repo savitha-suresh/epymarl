@@ -30,10 +30,10 @@ class BasicMAC:
         mask = th.triu(th.ones(seq_len, total_len, device=device) * float('-inf'), diagonal=1)
         return mask 
     
-    def forward(self, ep_batch, t, test_mode=False):
-        agent_inputs = self._build_inputs(ep_batch, t)
+    def forward(self, ep_batch, t, test_mode=False, t_end=None):
+        agent_inputs = self._build_inputs(ep_batch, t, t_end=t_end)
         memory = self.memory
-        avail_actions = ep_batch["avail_actions"][:, t]
+        avail_actions = ep_batch["avail_actions"]
         
         mem_len_now = 0 if memory is None else memory[0].size(1)
         mask = self.build_causal_mask(
@@ -43,17 +43,27 @@ class BasicMAC:
         mask = mask.expand(ep_batch.batch_size * self.n_agents, self.args.n_heads, -1, -1)
         agent_outs, hidden_states = self.agent(agent_inputs, memory=memory, attn_mask=mask)
         self.memory = self.agent.update_memory(memory, hidden_states)
+        if t_end is not None:
+            avail_actions = avail_actions[:, t:t_end]
+            avail_actions = avail_actions.permute(0, 2, 1, 3)
+            reshaped_avail_actions = avail_actions.reshape(
+                ep_batch.batch_size * self.n_agents, *avail_actions.shape[2:])
+        else:
+            avail_actions = avail_actions[:, t]
+            reshaped_avail_actions = avail_actions.reshape(ep_batch.batch_size * self.n_agents, -1)
+            reshaped_avail_actions = reshaped_avail_actions.unsqueeze(1)
         # Softmax the agent outputs if they're policy logits
         if self.agent_output_type == "pi_logits":
-
             if getattr(self.args, "mask_before_softmax", True):
                 # Make the logits for unavailable actions very negative to minimise their affect on the softmax
-                reshaped_avail_actions = avail_actions.reshape(ep_batch.batch_size * self.n_agents, -1)
-                reshaped_avail_actions = reshaped_avail_actions.unsqueeze(1)
                 agent_outs[reshaped_avail_actions == 0] = -1e10
             agent_outs = th.nn.functional.softmax(agent_outs, dim=-1)
-
-        return agent_outs.view(ep_batch.batch_size, self.n_agents, -1)
+        if t_end is not None:
+            B, T, F = agent_outs.shape
+            agent_outs_view = agent_outs.view(ep_batch.batch_size, T, self.n_agents, F)
+        else:
+            agent_outs_view = agent_outs.view(ep_batch.batch_size, self.n_agents, -1)
+        return agent_outs_view
 
     def init_hidden(self, batch_size):
         #self.hidden_states = self.agent.init_hidden().unsqueeze(0).expand(batch_size, self.n_agents, -1)  # bav
@@ -76,23 +86,44 @@ class BasicMAC:
     def _build_agents(self, input_shape):
         self.agent = agent_REGISTRY[self.args.agent](input_shape, self.args)
 
-    def _build_inputs(self, batch, t):
+    def _build_inputs(self, batch, t, t_end=None):
         # Assumes homogenous agents with flat observations.
         # Other MACs might want to e.g. delegate building inputs to each agent
-        bs = batch.batch_size
-        inputs = []
-        inputs.append(batch["obs"][:, t])  # b1av
-        if self.args.obs_last_action:
-            if t == 0:
-                inputs.append(th.zeros_like(batch["actions_onehot"][:, t]))
-            else:
-                inputs.append(batch["actions_onehot"][:, t-1])
-        if self.args.obs_agent_id:
-            inputs.append(th.eye(self.n_agents, device=batch.device).unsqueeze(0).expand(bs, -1, -1))
+        if t_end is None:
+            bs = batch.batch_size
+            inputs = []
+            inputs.append(batch["obs"][:, t])  # b1av
+            if self.args.obs_last_action:
+                if t == 0:
+                    inputs.append(th.zeros_like(batch["actions_onehot"][:, t]))
+                else:
+                    inputs.append(batch["actions_onehot"][:, t-1])
+            if self.args.obs_agent_id:
+                inputs.append(th.eye(self.n_agents, device=batch.device).unsqueeze(0).expand(bs, -1, -1))
 
-        inputs = th.cat([x.reshape(bs*self.n_agents, -1) for x in inputs], dim=1)
-        inputs = inputs.unsqueeze(1)  
-        return inputs
+            inputs = th.cat([x.reshape(bs*self.n_agents, -1) for x in inputs], dim=1)
+            inputs = inputs.unsqueeze(1)  
+            return inputs
+        else:   
+            bs = batch.batch_size
+            all_inputs = []
+            
+            t_start = t
+            for t_step in range(t_start, t_end):
+                inputs = []
+                inputs.append(batch["obs"][:, t_step])
+                if self.args.obs_last_action:
+                    if t_step == 0:
+                        inputs.append(th.zeros_like(batch["actions_onehot"][:, t_step]))
+                    else:
+                        inputs.append(batch["actions_onehot"][:, t_step-1])
+                if self.args.obs_agent_id:
+                    inputs.append(
+                        th.eye(self.n_agents, device=batch.device).unsqueeze(0).expand(bs, -1, -1))
+                inputs = th.cat([x.reshape(bs*self.n_agents, -1) for x in inputs], dim=1)
+                all_inputs.append(inputs)
+            all_inputs = th.stack(all_inputs, dim=1)
+            return all_inputs
 
     def _get_input_shape(self, scheme):
         input_shape = scheme["obs"]["vshape"]
