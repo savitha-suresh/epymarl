@@ -56,12 +56,13 @@ class RelativeMultiHeadAttention(nn.Module):
         return arr
 
     def forward(self, query, key, value, attn_mask):
-       
+        
          
         batch_size, full_len, _ = value.size()
           # (batch_size, seq_len, d_model)
         _, seq_len, _ = query.size()
         rel_enc = self.pos_enc[:full_len, :]
+        rel_enc = rel_enc.to(query.device)
         rel_enc = torch.flip(rel_enc, dims=[0]) 
 
         q = self.w_q(query).view(batch_size, seq_len, self.n_heads, self.d_head)
