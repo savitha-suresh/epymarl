@@ -150,11 +150,10 @@ class TransformerAgent(nn.Module):
         self.layers = nn.ModuleList([DecoderOnlyBlock(
             d_model=args.hidden_dim,
             nhead=args.n_heads,
-            dim_feedforward=args.hidden_dim * 4,
             norm_first=True,
             max_seq_len=self.max_seq_len
         ) for _ in range(args.n_layers)])
-        self.mem_len = 100
+        self.mem_len = 250
         
         self.output_norm = nn.LayerNorm(args.hidden_dim)
         self.fc2 = nn.Linear(args.hidden_dim, args.n_actions)
@@ -204,7 +203,7 @@ class TransformerAgent(nn.Module):
 
 # Helper class for GPT-style implementation
 class DecoderOnlyBlock(nn.Module):
-    def __init__(self, d_model, nhead, dim_feedforward, norm_first, max_seq_len):
+    def __init__(self, d_model, nhead, norm_first, max_seq_len):
         super(DecoderOnlyBlock, self).__init__()
         self.norm_first = norm_first
         self.norm1 = nn.LayerNorm(d_model)
@@ -220,9 +219,7 @@ class DecoderOnlyBlock(nn.Module):
         )
         
         self.ffn = nn.Sequential(
-            nn.Linear(d_model, dim_feedforward),
-            nn.ReLU(),
-            nn.Linear(dim_feedforward, d_model),
+            nn.Linear(d_model, d_model),
             nn.ReLU()
         )
         
