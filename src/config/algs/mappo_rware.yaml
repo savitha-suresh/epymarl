@@ -21,7 +21,7 @@ obs_individual_obs: False
 
 agent_output_type: "pi_logits"
 learner: "ppo_learner"
-entropy_coef: 0.01
+entropy_coef: 0.001
 use_rnn: True
 standardise_returns: False
 standardise_rewards: False
@@ -46,4 +46,4 @@ constrained_faults: False # to stall an agent only in the row above goal
 faulty_row: 9
 max_seq_len: 501
 n_heads: 1
-n_layers: 4
+n_layers: 2
