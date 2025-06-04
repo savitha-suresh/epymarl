@@ -56,22 +56,22 @@ class PPOLearner:
 
     def train(self, batch: EpisodeBatch, t_env: int, episode_num: int):
         # Get the relevant quantities
-        if episode_num <= 10000:
+        if episode_num <= 15000:
             self.mac.agent.faulty_agent_indices = {0}
             self.old_mac.agent.faulty_agent_indices = {0}
-            self.logger.console_logger.info("Faulty agent 0")
-        elif episode_num <= 20000:
+            #self.logger.console_logger.info("Faulty agent 0")
+        elif episode_num <= 30000:
             self.mac.agent.faulty_agent_indices = {1}
             self.old_mac.agent.faulty_agent_indices = {1}
-            self.logger.console_logger.info("Faulty agent 1")
-        elif episode_num <= 30000:
+           # self.logger.console_logger.info("Faulty agent 1")
+        elif episode_num <= 45000:
             self.mac.agent.faulty_agent_indices = {2}
             self.old_mac.agent.faulty_agent_indices = {2}
-            self.logger.console_logger.info("Faulty agent 2")
+            #self.logger.console_logger.info("Faulty agent 2")
         else:
             self.mac.agent.faulty_agent_indices = {3}
             self.old_mac.agent.faulty_agent_indices = {3}
-            self.logger.console_logger.info("Faulty agent 3")
+           # self.logger.console_logger.info("Faulty agent 3")
         self.old_mac.agent.train()
         self.mac.agent.train()
         rewards = batch["reward"][:, :-1]
