@@ -31,7 +31,7 @@ epochs: 4
 eps_clip: 0.2
 name: "mappo"
 
-t_max: 20050000
+t_max: 30050000
 
 
 # --- Faulty env params ---
@@ -46,4 +46,4 @@ constrained_faults: False # to stall an agent only in the row above goal
 faulty_row: 9
 max_seq_len: 501
 n_heads: 1
-n_layers: 4
+n_layers: 2

@@ -153,7 +153,7 @@ class TransformerAgent(nn.Module):
             norm_first=True,
             max_seq_len=self.max_seq_len
         ) for _ in range(args.n_layers)])
-        self.mem_len = 100
+        self.mem_len = 150
         
         self.output_norm = nn.LayerNorm(args.hidden_dim)
         self.fc2 = nn.Linear(args.hidden_dim, args.n_actions)

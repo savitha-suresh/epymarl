@@ -198,8 +198,45 @@ def run_sequential(args, logger):
 
     while runner.t_env <= args.t_max:
         # Run for a whole episode at a time
-        learner.mac.agent.init_random_fault()
-        learner.old_mac.agent.init_random_fault()
+        # learner.mac.agent.init_random_fault()
+        # learner.old_mac.agent.init_random_fault()
+        if episode > 20000:
+            logger.console_logger.info(
+                f"Setting 0 as faulty at episode {episode}"
+            )
+            learner.mac.agent.init_random_fault_given_indices(
+                [0]
+            )
+            learner.old_mac.agent.init_random_fault_given_indices(
+                [0]
+            )
+        if episode > 30000:
+            logger.console_logger.info(
+                f"Choosing faulty from 0, 1 at episode {episode}"
+            )
+            learner.mac.agent.init_random_fault_given_indices(
+                [0, 1]
+            )
+            learner.old_mac.agent.init_random_fault_given_indices(
+                [0, 1]
+            )
+        if episode > 40000:
+            logger.console_logger.info(
+                f"Choosing faulty from 0, 1, 2 at episode {episode}"
+            )
+            learner.mac.agent.init_random_fault_given_indices(
+                [0, 1, 2]
+            )
+            learner.old_mac.agent.init_random_fault_given_indices(
+                [0, 1, 2]
+            )
+        if episode > 50000:
+            logger.console_logger.info(
+                f"Random fault at episode {episode}"
+            )
+            learner.mac.agent.init_random_fault()
+            learner.old_mac.agent.init_random_fault()
+        
         episode_batch = runner.run(test_mode=False)
         buffer.insert_episode_batch(episode_batch)
 

@@ -17,14 +17,20 @@ class TransformerFaultyAgent(TransformerAgent):
         if self.args.action_fault:
             raise ValueError("Cannot use this network fault with action_fault set to True")
         self._faulty = False
-        self.init_random_fault()
+        self.faulty_agent_indices = set()
+        #self.init_random_fault()
         self.faulty_row = self.args.faulty_row
         self.no_op_action = 0
     
+    def init_random_fault_given_indices(self, indices):
+        self.faulty_agent_indices = set(random.sample(indices, 
+                                                      self.args.n_faulty_agents))
+        
+
     def init_random_fault(self):
         self.faulty_agent_indices = set(random.sample(range(self.args.n_agents), 
                                                       self.args.n_faulty_agents))
-        self._faulty = False
+        
 
     def forward(self, inputs, memory=None, attn_mask=None):
         # Check if we should make agents faulty
