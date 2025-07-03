@@ -22,8 +22,9 @@ class TransformerFaultyAgent(TransformerAgent):
         self.no_op_action = 0
     
     def init_random_fault(self):
-        self.faulty_agent_indices = set(random.sample(range(self.args.n_agents), 
-                                                      self.args.n_faulty_agents))
+        # self.faulty_agent_indices = set(random.sample(range(self.args.n_agents), 
+                                                    #   self.args.n_faulty_agents))
+        self.faulty_agent_indices = {3}
         self._faulty = False
 
     def forward(self, inputs, memory=None, attn_mask=None):
@@ -47,6 +48,7 @@ class TransformerFaultyAgent(TransformerAgent):
                     # 75 is 70 obs, last action encoding, agent_id
                     # we will check the pos of the faulty agent
                     # [:, 0] is 0the column in all rows
+                    inputs = inputs.squeeze(1)  # Ensure inputs is 2D
                     positions_of_agent = inputs[faulty_idx::self.args.n_agents][:, 1]
                     index_to_halt = []
                     for env_idx in range(positions_of_agent.size(0)):
