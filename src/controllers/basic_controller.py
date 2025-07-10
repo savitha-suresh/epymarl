@@ -19,7 +19,7 @@ class BasicMAC:
     def select_actions(self, ep_batch, t_ep, t_env, bs=slice(None), test_mode=False):
         # Only select actions for the selected batch elements in bs
         avail_actions = ep_batch["avail_actions"][:, t_ep]
-        agent_outputs = self.forward(ep_batch, t_ep, test_mode=test_mode)
+        agent_outputs, _ = self.forward(ep_batch, t_ep, test_mode=test_mode)
         chosen_actions = self.action_selector.select_action(agent_outputs[bs], avail_actions[bs], t_env, test_mode=test_mode)
         return chosen_actions
 
@@ -29,28 +29,61 @@ class BasicMAC:
         obs_faulty = th.zeros(obs.shape[0], obs.shape[1], obs.shape[2] + 9 , device=obs.device)
         
         bs = obs.shape[0]
+        n_agents = obs.shape[1]
         if self.comm is None:
-            comm = th.zeros((bs, self.args.n_agents, 1), device=obs.device)
-        grid_index_map = {
-            (-1, -1): 15,  # top-left
-            (-1,  0): 23,  # top
-            (-1,  1): 31,  # top-right
-            ( 0, -1): 39,  # left
-            ( 0,  0): 47,  # center (self)
-            ( 0,  1): 55,  # right
-            ( 1, -1): 63,  # bottom-left
-            ( 1,  0): 71,  # bottom
-            ( 1,  1): 79,  # bottom-right
-        }
-        
-    
+            self.comm = th.zeros((bs, self.args.n_agents, 1), device=obs.device)
+
+        index_map = {8: 15, 15: 23, 22: 31, 29: 39, 36: 47,43: 55, 50: 63, 57: 71, 64: 79}
+        # index_map = {
+        #     (-1, -1): 15,  # top-left
+        #     (-1,  0): 23,  # top
+        #     (-1,  1): 31,  # top-right
+        #     ( 0, -1): 39,  # left
+        #     ( 0,  0): 47,  # center (self)
+        #     ( 0,  1): 55,  # right
+        #     ( 1, -1): 63,  # bottom-left
+        #     ( 1,  0): 71,  # bottom
+        #     ( 1,  1): 79,  # bottom-right
+        # }
+
+        for source_idx, target_idx in index_map.items():
+            # Step 1: Mask where obs[:, :, source_idx] == 1
+            mask = obs[:, :, source_idx] == 1
+
+            # Step 2: Get one-hot vector from next 4 positions
+            one_hot = obs[:, :, source_idx+1:source_idx+5]  # shape: (10, 4, 4)
+
+            # Step 3: Get agent index from one-hot
+            agent_idx = one_hot.argmax(dim=-1)  # shape: (10, 4)
+
+            # Step 4: Use advanced indexing to fetch comm[batch, agent_idx]
+            # Expand dimensions to match for gather
+            comm_gather = self.comm.squeeze(-1).unsqueeze(1).expand(-1, n_agents, -1)  # (10, 4, 4)
+            selected_comm = th.gather(comm_gather, dim=2, index=agent_idx.unsqueeze(-1)).squeeze(-1)  # (10, 4)
+
+            # Step 5: Write the selected_comm to obs_new at target_idx
+            obs_faulty[:, :, target_idx] = selected_comm * mask  # write only where mask is 1
+
+
+        obs_faulty[:, :, 0:15] = obs[:, :, 0:15]
+        obs_faulty[:, :, 16:23] = obs[:, :, 15:22]
+        obs_faulty[:, :, 24:31] = obs[:, :, 22:29]
+        obs_faulty[:, :, 32:39] = obs[:, :, 29:36]
+        obs_faulty[:, :, 40:47] = obs[:, :, 36:43]
+        obs_faulty[:, :, 48:55] = obs[:, :, 43:50]
+        obs_faulty[:, :, 56:63] = obs[:, :, 50:57]
+        obs_faulty[:, :, 64:71] = obs[:, :, 57:64]
+        obs_faulty[:, :, 72:79] = obs[:, :, 64:71]
+        return obs_faulty
 
     def forward(self, ep_batch, t, test_mode=False):
         agent_inputs = self._build_inputs(ep_batch, t)
         avail_actions = ep_batch["avail_actions"][:, t]
-        agent_outs_full, self.hidden_states = self.agent(agent_inputs, self.hidden_states)
-        agent_outs = agent_outs_full[:, :-1]
-        self.comm = agent_outs_full[:, -1] if self.args.use_comm else None
+        agent_outs_full = self.agent(agent_inputs, self.hidden_states)
+        if self.args.use_comm:
+            agent_outs, self.hidden_states, self.comm = agent_outs_full
+        else:
+            agent_outs, self.hidden_states = agent_outs_full
         # Softmax the agent outputs if they're policy logits
         if self.agent_output_type == "pi_logits":
 
@@ -60,7 +93,7 @@ class BasicMAC:
                 agent_outs[reshaped_avail_actions == 0] = -1e10
             agent_outs = th.nn.functional.softmax(agent_outs, dim=-1)
 
-        return agent_outs.view(ep_batch.batch_size, self.n_agents, -1)
+        return agent_outs.view(ep_batch.batch_size, self.n_agents, -1), self.comm
 
     def init_hidden(self, batch_size):
         self.hidden_states = self.agent.init_hidden().unsqueeze(0).expand(batch_size, self.n_agents, -1)  # bav

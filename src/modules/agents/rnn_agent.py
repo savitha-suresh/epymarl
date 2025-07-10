@@ -14,8 +14,12 @@ class RNNAgent(nn.Module):
             self.rnn = nn.GRUCell(args.hidden_dim, args.hidden_dim)
         else:
             self.rnn = nn.Linear(args.hidden_dim, args.hidden_dim)
-        self.fc2 = nn.Linear(args.hidden_dim, args.n_actions+1)
-
+        self.fc2 = nn.Linear(args.hidden_dim, args.n_actions)
+        self.comm_head = nn.Sequential(
+            nn.Linear(args.hidden_dim, args.hidden_dim),
+            nn.ReLU(),
+            nn.Linear(args.hidden_dim, 1)
+        )
     def init_hidden(self):
         # make hidden states on same device as model
         return self.fc1.weight.new(1, self.args.hidden_dim).zero_()
@@ -28,5 +32,8 @@ class RNNAgent(nn.Module):
         else:
             h = F.relu(self.rnn(x))
         q = self.fc2(h)
+        if self.args.use_comm:
+            comm = self.comm_head(h)
+            return q, h, comm
         return q, h
 

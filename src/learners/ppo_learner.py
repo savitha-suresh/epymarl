@@ -2,6 +2,7 @@
 import copy
 
 import torch as th
+import torch.nn.functional as F
 from torch.optim import Adam
 
 from components.episode_buffer import EpisodeBatch
@@ -50,6 +51,24 @@ class PPOLearner:
             rew_shape = (1,) if self.args.common_reward else (self.n_agents,)
             self.rew_ms = RunningMeanStd(shape=rew_shape, device=device)
 
+
+    def communication_loss(self, comm_flag_logits):
+        """
+        Loss function to force the model to always predict 1 for communication flag
+        
+        Args:
+            comm_flag_logits: (batch_size, seq_len, 1) - raw logits from model
+        
+        Returns:
+            loss: scalar loss value
+        """
+        # Target is always 1 (communicate)
+        target = th.ones_like(comm_flag_logits)
+        
+        # Option 1: MSE loss (if treating as regression)
+        mse_loss = F.mse_loss(th.sigmoid(comm_flag_logits), target)
+        return mse_loss
+    
     def train(self, batch: EpisodeBatch, t_env: int, episode_num: int):
         # Get the relevant quantities
 
@@ -77,16 +96,17 @@ class PPOLearner:
             # reshape rewards to be of shape (batch_size, episode_length, n_agents)
             rewards = rewards.expand(-1, -1, self.n_agents)
 
-        #rewards = self.stuck_penalty.shape_rewards(rewards, positions)
-        #rewards = self.osc_penalty.shape_rewards(rewards, positions)
+        rewards = self.stuck_penalty.shape_rewards(rewards, positions)
+        rewards = self.osc_penalty.shape_rewards(rewards, positions)
         mask = mask.repeat(1, 1, self.n_agents)
         #mask = mask * active_agents
         critic_mask = mask.clone()
 
         old_mac_out = []
+        
         self.old_mac.init_hidden(batch.batch_size)
         for t in range(batch.max_seq_length - 1):
-            agent_outs = self.old_mac.forward(batch, t=t)
+            agent_outs, _ = self.old_mac.forward(batch, t=t)
             old_mac_out.append(agent_outs)
         old_mac_out = th.stack(old_mac_out, dim=1)  # Concat over time
         old_pi = old_mac_out
@@ -97,11 +117,18 @@ class PPOLearner:
         
         for k in range(self.args.epochs):
             mac_out = []
+            comms = []
+            comm_loss = 0
             self.mac.init_hidden(batch.batch_size)
             for t in range(batch.max_seq_length - 1):
-                agent_outs = self.mac.forward(batch, t=t)
+                agent_outs, comm = self.mac.forward(batch, t=t)
                 mac_out.append(agent_outs)
+                if self.args.use_comm:
+                    comms.append(comm)
             mac_out = th.stack(mac_out, dim=1)  # Concat over time
+            if self.args.use_comm:
+                comms = th.stack(comms, dim=1)
+                comm_loss = self.communication_loss(comms)
 
             pi = mac_out
             advantages, critic_train_stats = self.train_critic_sequential(
@@ -126,7 +153,7 @@ class PPOLearner:
               # Apply agent mask
             pg_loss = (
                 -(
-                    (th.min(surr1, surr2) + self.args.entropy_coef * entropy) * mask
+                    (th.min(surr1, surr2) + self.args.entropy_coef * entropy + self.args.comm_coef * comm_loss) * mask
                 ).sum()
                 / mask.sum()
             )
