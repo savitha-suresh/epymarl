@@ -13,7 +13,7 @@ class BasicMAC:
         self.agent_output_type = args.agent_output_type
 
         self.action_selector = action_REGISTRY[args.action_selector](args)
-
+        self.comm = None
         self.hidden_states = None
 
     def select_actions(self, ep_batch, t_ep, t_env, bs=slice(None), test_mode=False):
@@ -23,11 +23,34 @@ class BasicMAC:
         chosen_actions = self.action_selector.select_action(agent_outputs[bs], avail_actions[bs], t_env, test_mode=test_mode)
         return chosen_actions
 
+
+    def get_updated_obs_with_comm(self, obs):
+        # If using communication, append the communication vector to the observations
+        obs_faulty = th.zeros(obs.shape[0], obs.shape[1], obs.shape[2] + 9 , device=obs.device)
+        
+        bs = obs.shape[0]
+        if self.comm is None:
+            comm = th.zeros((bs, self.args.n_agents, 1), device=obs.device)
+        grid_index_map = {
+            (-1, -1): 15,  # top-left
+            (-1,  0): 23,  # top
+            (-1,  1): 31,  # top-right
+            ( 0, -1): 39,  # left
+            ( 0,  0): 47,  # center (self)
+            ( 0,  1): 55,  # right
+            ( 1, -1): 63,  # bottom-left
+            ( 1,  0): 71,  # bottom
+            ( 1,  1): 79,  # bottom-right
+        }
+        
+    
+
     def forward(self, ep_batch, t, test_mode=False):
         agent_inputs = self._build_inputs(ep_batch, t)
         avail_actions = ep_batch["avail_actions"][:, t]
-        agent_outs, self.hidden_states = self.agent(agent_inputs, self.hidden_states)
-
+        agent_outs_full, self.hidden_states = self.agent(agent_inputs, self.hidden_states)
+        agent_outs = agent_outs_full[:, :-1]
+        self.comm = agent_outs_full[:, -1] if self.args.use_comm else None
         # Softmax the agent outputs if they're policy logits
         if self.agent_output_type == "pi_logits":
 
@@ -65,7 +88,11 @@ class BasicMAC:
         # Other MACs might want to e.g. delegate building inputs to each agent
         bs = batch.batch_size
         inputs = []
-        inputs.append(batch["obs"][:, t])  # b1av
+        batch_obs = batch["obs"][:, t]  # b1av
+        if self.args.use_comm:
+            # If using communication, append the communication vector
+            batch_obs = self.get_updated_obs_with_comm(batch_obs)
+        inputs.append(batch_obs)  # b1av
         if self.args.obs_last_action:
             if t == 0:
                 inputs.append(th.zeros_like(batch["actions_onehot"][:, t]))
@@ -83,5 +110,7 @@ class BasicMAC:
             input_shape += scheme["actions_onehot"]["vshape"][0]
         if self.args.obs_agent_id:
             input_shape += self.n_agents
+        if self.args.use_comm:
+            input_shape += 9
 
         return input_shape

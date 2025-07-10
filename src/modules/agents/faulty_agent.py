@@ -40,7 +40,8 @@ class FaultyAgent(RNNAgent):
                 # Modify Q-values for the specific faulty agents
                 if not self.args.constrained_faults:
                     q[faulty_idx::self.args.n_agents, 0] = 1e10  # High logit for action 0
-                    q[faulty_idx::self.args.n_agents, 1:] = -1e10  # Low logit for all other actions
+                    q[faulty_idx::self.args.n_agents, 1:-1] = -1e10  # Low logit for all other actions
+                    q[faulty_idx::self.args.n_agents, -1] = -1
                 else:
                     # inputs is of the form (bs*n_agents, 75)
                     # row 0, 4, 8 are for agent 0, row 1, 5,9 are for agent 1 in the bs environments

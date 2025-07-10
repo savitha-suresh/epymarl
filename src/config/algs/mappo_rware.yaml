@@ -15,8 +15,8 @@ target_update_interval_or_tau: 0.01
 lr: 0.0003
 hidden_dim: 128
 
-obs_agent_id: True
-obs_last_action: False
+obs_agent_id: False
+obs_last_action: True
 obs_individual_obs: False
 
 agent_output_type: "pi_logits"
@@ -31,7 +31,7 @@ epochs: 4
 eps_clip: 0.2
 name: "mappo"
 
-t_max: 20050000
+t_max: 40050000
 
 
 # --- Faulty env params ---
@@ -47,3 +47,4 @@ faulty_row: 9
 max_seq_len: 75
 n_heads: 4
 n_layers: 2
+use_comm: True

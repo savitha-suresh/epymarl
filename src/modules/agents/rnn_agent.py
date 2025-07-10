@@ -14,7 +14,7 @@ class RNNAgent(nn.Module):
             self.rnn = nn.GRUCell(args.hidden_dim, args.hidden_dim)
         else:
             self.rnn = nn.Linear(args.hidden_dim, args.hidden_dim)
-        self.fc2 = nn.Linear(args.hidden_dim, args.n_actions)
+        self.fc2 = nn.Linear(args.hidden_dim, args.n_actions+1)
 
     def init_hidden(self):
         # make hidden states on same device as model
