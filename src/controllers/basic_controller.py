@@ -130,14 +130,49 @@ class BasicMAC:
         return obs_faulty       
 
 
+    def get_obs_with_fault_location(self, obs_faulty, bs):
+        n_agents = obs_faulty.shape[1]
+        trigger_indices = th.tensor([15, 23, 31, 39, 55, 63, 71, 79], device=obs_faulty.device)
+        faulty_idx = next(iter(self.agent.faulty_agent_indices))  # Assuming only one faulty agent
+        agent_positions = obs_faulty[:, :, 0:2]  # shape [B, A, 2]
+
+        # --- Step 1: Check if any agent in batch sees a trigger ---
+        trigger_activated = (obs_faulty[:, :, trigger_indices] == 1).any(dim=-1)  # [B, A]
+        any_trigger_in_batch = trigger_activated.any(dim=1)  # [B]
+
+        # --- Step 2: Initialize discovery memory (1 per batch entry) if not already done ---
+        if not hasattr(self, "fault_discovered"):
+            self.fault_discovered = th.zeros(bs, dtype=th.bool, device=obs_faulty.device)
+        
+        # Update discovery flag where new triggers happen
+        self.fault_discovered = self.fault_discovered | any_trigger_in_batch  # [B]
+
+        # --- Step 3: Fetch current position of the faulty agent ---
+        faulty_position = agent_positions[:, faulty_idx, :]  # [B, 2]
+
+        # Zero out where not yet discovered
+        discovered_position = th.where(
+            self.fault_discovered.view(bs, 1),  # [B, 1]
+            faulty_position,
+            th.zeros_like(faulty_position)
+        )  # [B, 2]
+
+        # --- Step 4: Expand to all agents ---
+        position_expanded = discovered_position.unsqueeze(1).expand(-1, n_agents, -1)  # [B, A, 2]
+
+        # --- Step 5: Concatenate with original obs ---
+        obs_augmented = th.cat([obs_faulty, position_expanded], dim=-1)  # [B, A, F + 2]
+        return obs_augmented
+
     def _build_inputs(self, batch, t):
         # Assumes homogenous agents with flat observations.
         # Other MACs might want to e.g. delegate building inputs to each agent
         bs = batch.batch_size
         obs_t = batch["obs"][:, t]
         obs_faulty = self.get_new_obs_with_faults(obs_t, bs)
+        obs_comm_faulty = self.get_obs_with_fault_location(obs_faulty, bs)
         inputs = []
-        inputs.append(obs_faulty)  # b1av
+        inputs.append(obs_comm_faulty)  # b1av
         if self.args.obs_last_action:
             if t == 0:
                 inputs.append(th.zeros_like(batch["actions_onehot"][:, t]))
@@ -150,10 +185,11 @@ class BasicMAC:
         return inputs
 
     def _get_input_shape(self, scheme):
-        input_shape = scheme["obs"]["vshape"] + 9
+        input_shape = scheme["obs"]["vshape"] + 9 
         if self.args.obs_last_action:
             input_shape += scheme["actions_onehot"]["vshape"][0]
         if self.args.obs_agent_id:
             input_shape += self.n_agents
-
+        if self.args.comm_location:
+            input_shape += self.args.n_faulty_agents * 2
         return input_shape
