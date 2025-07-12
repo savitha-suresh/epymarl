@@ -21,16 +21,19 @@ class FaultyAgent(RNNAgent):
         self.no_op_action = 0
     
     def init_random_fault(self):
-        # self.faulty_agent_indices = set(random.sample(range(self.args.n_agents), 
-        #                                               self.args.n_faulty_agents))
-        self.faulty_agent_indices = {1}
+        self.faulty_agent_indices = set(random.sample(range(self.args.n_agents), 
+                                                      self.args.n_faulty_agents))
+        print(f"Agents {self.faulty_agent_indices} have become network faulty!")
+        #self.faulty_agent_indices = {1}
         self._faulty = False
+
+    
 
     def forward(self, inputs, hidden_state):
         # Check if we should make agents faulty
         if self.faulty_agent_indices and not self._faulty and random.random() < self.args.fault_prob:
             self._faulty = True
-            print(f"Agents {self.faulty_agent_indices} have become network faulty!")
+            
             
         # Get regular Q-values/logits from parent class
         q, h = super().forward(inputs, hidden_state)
