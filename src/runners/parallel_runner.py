@@ -276,11 +276,7 @@ class ParallelRunner:
                 pre_transition_data, bs=envs_not_terminated, ts=self.t, mark_filled=True
             )
 
-        if self.args.random_start:
-            if self.args.action_fault:
-                self.faulty = False
-            else:
-                self.mac.agent._faulty = False
+        
 
         if not test_mode:
             self.t_env += self.env_steps_this_run
