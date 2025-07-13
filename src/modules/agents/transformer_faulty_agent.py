@@ -25,12 +25,13 @@ class TransformerFaultyAgent(TransformerAgent):
         self.faulty_agent_indices = set(random.sample(range(self.args.n_agents), 
                                                       self.args.n_faulty_agents))
         self._faulty = False
+        print(f"Agents {self.faulty_agent_indices} have become network faulty!")
 
     def forward(self, inputs, memory=None, attn_mask=None):
         # Check if we should make agents faulty
         if self.faulty_agent_indices and not self._faulty and random.random() < self.args.fault_prob:
             self._faulty = True
-            print(f"Agents {self.faulty_agent_indices} have become network faulty!")
+            
             
         # Get regular Q-values/logits from parent class
         q, h = super().forward(inputs, memory=memory, attn_mask=attn_mask)
