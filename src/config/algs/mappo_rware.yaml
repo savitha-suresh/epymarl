@@ -47,3 +47,4 @@ faulty_row: 9
 max_seq_len: 75
 n_heads: 4
 n_layers: 2
+random_start: True
