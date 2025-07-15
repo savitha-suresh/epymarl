@@ -81,7 +81,7 @@ class PPOLearner:
         rewards = self.osc_penalty.shape_rewards(rewards, positions)
         rewards = penalty_faulty_facing(rewards, self.mac.agent.faulty_agent_indices, batch["obs"])
         mask = mask.repeat(1, 1, self.n_agents)
-        #mask = mask * active_agents
+        mask = mask * active_agents
         critic_mask = mask.clone()
 
         old_mac_out = []
