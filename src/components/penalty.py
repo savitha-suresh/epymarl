@@ -185,23 +185,9 @@ def penalty_faulty_facing(rewards, faulty_indices, obs, penalty_value=-0.05):
         # Check if trigger is active
         trigger = obs_rew[:, :, :, trigger_idx] == 1  # shape [B, T, A]
         
-        # Check one-hot encoding penalty condition
-        onehot_start_idx = trigger_idx + 1
-        onehot_end_idx = onehot_start_idx + 4
-        
-        # Get one-hot values for this trigger type (assuming 4 categories)
-        if onehot_end_idx <= F:
-            onehot_values = obs_rew[:, :, :, onehot_start_idx:onehot_end_idx]  # [B, T, A, 4]
-            agent_idx = th.argmax(onehot_values, dim=-1)
-            # Check if any of the one-hot values matches the target value for this direction
-            
-            penalty_condition = (agent_idx == faulty_idx) # [B, T, A]
-        else:
-            # If one-hot indices are out of bounds, default to no penalty
-            penalty_condition = th.zeros_like(is_facing, dtype=th.bool)
         
         # Apply penalty where agent is facing direction, trigger is active, AND penalty condition is met
-        penalty_mask |= is_facing & trigger & penalty_condition
+        penalty_mask |= is_facing & trigger
     
     penalty = th.where(penalty_mask, 
                       th.tensor(penalty_value, device=obs.device), 
