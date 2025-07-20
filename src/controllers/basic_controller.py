@@ -70,20 +70,20 @@ class BasicMAC:
         faulty_indices = self.agent.faulty_agent_indices
         grid_index_map = {
             (-1, -1): 15,  # top-left
-            (-1,  0): 23,  # top
-            (-1,  1): 31,  # top-right
-            ( 0, -1): 39,  # left
+            (0,  -1): 23,  # top
+            (1,  -1): 31,  # top-right
+            ( -1, 0): 39,  # left
             ( 0,  0): 47,  # center (self)
-            ( 0,  1): 55,  # right
-            ( 1, -1): 63,  # bottom-left
-            ( 1,  0): 71,  # bottom
+            ( 1,  0): 55,  # right
+            ( -1, 1): 63,  # bottom-left
+            ( 0,  1): 71,  # bottom
             ( 1,  1): 79,  # bottom-right
         }
 
         agent_pos = obs_t[:, :, 0:2]
         lookup = th.full((3, 3), -1, dtype=th.long, device=obs.device)  # shape [3, 3]
-        for (dy, dx), idx in grid_index_map.items():
-            lookup[dy + 1, dx + 1] = idx  # shift -1:1 to 0:2
+        for (dx, dy), idx in grid_index_map.items():
+            lookup[dx + 1, dy + 1] = idx  # shift -1:1 to 0:2
         for faulty_idx in faulty_indices:
     # Get positions of faulty agent across all envs → shape [10, 2]
             faulty_pos = agent_pos[:, faulty_idx, :]  # (envs, 2)
@@ -91,20 +91,20 @@ class BasicMAC:
             # Expand to (10, 4, 2) to compare with all agents
             faulty_pos_expanded = faulty_pos.unsqueeze(1).expand(-1, 4, -1)
             
-            # Get relative position dy, dx
+            # Get relative position dx, dy
             rel_pos = faulty_pos_expanded - agent_pos  # (10, 4, 2)
             rel_pos = faulty_pos_expanded - agent_pos  # shape (10, 4, 2)
 
-            # Create visibility mask: only if both dy and dx ∈ [-1, 1]
+            # Create visibility mask: only if both dx and dy ∈ [-1, 1]
             visible_mask = (rel_pos.abs() <= 1).all(dim=-1)  # shape (10, 4)
 
             # Use rel_pos only where visible
-            dy = (rel_pos[..., 0] + 1).long()  # for indexing lookup
-            dx = (rel_pos[..., 1] + 1).long()
+            dx = (rel_pos[..., 0] + 1).long()  # for indexing lookup
+            dy = (rel_pos[..., 1] + 1).long()
 
             # For now set to -1, then overwrite visible positions
             obs_idx = th.full((bs, self.n_agents), -1, dtype=th.long, device=obs.device)
-            obs_idx[visible_mask] = lookup[dy[visible_mask], dx[visible_mask]]  # shape (10, 4)
+            obs_idx[visible_mask] = lookup[dx[visible_mask], dy[visible_mask]]  # shape (10, 4)
 
             # Prepare indexing to scatter add
             env_ids = th.arange(bs).unsqueeze(1).expand(-1, self.n_agents).flatten().to(obs.device)
