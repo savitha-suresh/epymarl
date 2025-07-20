@@ -79,7 +79,7 @@ class PPOLearner:
 
         rewards = self.stuck_penalty.shape_rewards(rewards, positions)
         rewards = self.osc_penalty.shape_rewards(rewards, positions)
-        obs_faulty = self.mac.get_new_obs_with_faults(batch["obs"], batch["bs"])
+        obs_faulty = self.mac.get_new_obs_with_faults(batch["obs"], self.args.batch_size)
         rewards = penalty_faulty_facing(rewards, self.mac.agent.faulty_agent_indices, obs_faulty)
         mask = mask.repeat(1, 1, self.n_agents)
         mask = mask * active_agents
