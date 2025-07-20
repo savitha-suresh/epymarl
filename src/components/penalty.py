@@ -159,17 +159,16 @@ class OscillationPenaltyRewardShaper:
 
 
 
-def penalty_faulty_facing(rewards, faulty_indices, obs, penalty_value=-0.05):
-    faulty_idx = next(iter(faulty_indices))
+def penalty_faulty_facing(rewards, faulty_indices, obs, penalty_value=-0.5):
     B, T, A = rewards.shape
     F = obs.shape[-1]
     
     # New mapping: facing_direction -> trigger_index
     direction_map = {
-        3: 15,  # up -> trigger at 15
-        4: 57,  # down -> trigger at 57  
-        5: 29,  # left -> trigger at 29
-        6: 43,  # right -> trigger at 43
+        3: 23,  # up -> trigger at 23
+        4: 71,  # down -> trigger at 71
+        5: 39,  # left -> trigger at 39
+        6: 55,  # right -> trigger at 55
     }
     
 
