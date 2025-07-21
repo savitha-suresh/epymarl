@@ -315,7 +315,6 @@ class ParallelRunner:
                     "epsilon", self.mac.action_selector.epsilon, self.t_env
                 )
             self.log_train_stats_t = self.t_env
-
         return self.batch
 
     def _log(self, returns, stats, prefix):
