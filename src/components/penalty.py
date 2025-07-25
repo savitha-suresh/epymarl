@@ -159,7 +159,7 @@ class OscillationPenaltyRewardShaper:
 
 
 
-def penalty_faulty_facing(rewards, faulty_indices, obs, penalty_value=-0.25):
+def penalty_faulty_facing(rewards, faulty_indices, obs, penalty_value=-0.5):
     B, T, A = rewards.shape
     F = obs.shape[-1]
     
