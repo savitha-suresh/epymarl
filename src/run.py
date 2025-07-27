@@ -88,6 +88,8 @@ def run(_run, _config, _log):
 def evaluate_sequential(args, runner):
     for _ in range(args.test_nepisode):
         runner.mac.agent._faulty = False
+        runner.mac.fault_discovered = th.zeros(
+                    args.batch_size, dtype=th.bool, device=args.device)
         runner.run(test_mode=True)
 
     if args.save_replay:
@@ -231,10 +233,16 @@ def run_sequential(args, logger):
             last_test_T = runner.t_env
             for _ in range(n_test_runs):
                 runner.mac.agent._faulty = False
+                runner.mac.fault_discovered = th.zeros(
+                    args.batch_size, dtype=th.bool, device=episode_sample.device)
                 runner.run(test_mode=True)
 
         if args.random_start:
             if not args.action_fault:
+                learner.mac.fault_discovered = th.zeros(
+                    args.batch_size, dtype=th.bool, device=episode_sample.device)
+                learner.old_mac.fault_discovered = th.zeros(
+                    args.batch_size, dtype=th.bool, device=episode_sample.device)
                 learner.mac.agent._faulty = False
                 learner.old_mac.agent._faulty = False
                 
