@@ -68,8 +68,8 @@ class PPOLearner:
         mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1])
         actions = actions[:, :-1]
         
-        inactive_agents = th.tensor(list(self.mac.agent.faulty_agent_indices))
-        active_agents = th.ones(self.n_agents)
+        inactive_agents = th.tensor(list(self.mac.agent.faulty_agent_indices), device=batch.device)
+        active_agents = th.ones(self.n_agents, device=batch.device)
         active_agents[inactive_agents] = 0
         active_agents = active_agents.view(1, 1, -1)
         
