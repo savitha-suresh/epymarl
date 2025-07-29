@@ -87,7 +87,7 @@ class PPOLearner:
         #     obs_faulty[:, t] = self.mac.get_new_obs_with_faults(batch["obs"][:, t], self.args.batch_size)
         # rewards = penalty_faulty_facing(rewards, self.mac.agent.faulty_agent_indices, obs_faulty)
         mask = mask.repeat(1, 1, self.n_agents)
-        mask = mask * active_agents
+        #mask = mask * active_agents
         critic_mask = mask.clone()
 
         old_mac_out = []
