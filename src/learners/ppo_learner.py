@@ -82,8 +82,8 @@ class PPOLearner:
             # reshape rewards to be of shape (batch_size, episode_length, n_agents)
             rewards = rewards.expand(-1, -1, self.n_agents)
 
-        rewards = self.stuck_penalty.shape_rewards(rewards, positions)
-        rewards = self.osc_penalty.shape_rewards(rewards, positions)
+        # rewards = self.stuck_penalty.shape_rewards(rewards, positions)
+        # rewards = self.osc_penalty.shape_rewards(rewards, positions)
         # obs_faulty = th.zeros(batch["obs"].shape[0], batch["obs"].shape[1], batch["obs"].shape[2], 
         #                            batch["obs"].shape[3] + 9,  device=batch["obs"].device)
         # for t in range(batch.max_seq_length - 1):
