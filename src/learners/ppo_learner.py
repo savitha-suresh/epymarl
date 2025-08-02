@@ -16,21 +16,15 @@ class PPOLearner:
         self.n_agents = args.n_agents
         self.n_actions = args.n_actions
         self.logger = logger
-        self.stuck_penalty = StuckPenaltyRewardShaper(
-            max_lookback=20,
-            base_penalty=0.0005,  # Adjust based on reward scale
-            penalty_growth_rate=1.1
-        )
-        self.osc_penalty = OscillationPenaltyRewardShaper(
-            lookback=20,
-            osc_coeff=0.0005,
-            growth_rate=1.1
-        )
+        self.epsilon = 1e-8
+        
 
         self.mac = mac
         self.old_mac = copy.deepcopy(mac)
         self.agent_params = list(mac.parameters())
+        self.mask_params = list(mac.mask_parameters())
         self.agent_optimiser = Adam(params=self.agent_params, lr=args.lr)
+        self.mask_optimiser = Adam(params=self.mask_params, lr=args.lr)
 
         self.critic = critic_resigtry[args.critic_type](scheme, args)
         self.target_critic = copy.deepcopy(self.critic)
@@ -55,18 +49,19 @@ class PPOLearner:
 
         rewards = batch["reward"][:, :-1]
         
-        positions = batch["obs"][:, :, :, 0:2]
+       
+        
         
         actions = batch["actions"][:, :]
         terminated = batch["terminated"][:, :-1].float()
-        mask = batch["filled"][:, :-1].float()
-        mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1])
+        mask_org = batch["filled"][:, :-1].float()
+        mask_org[:, 1:] = mask_org[:, 1:] * (1 - terminated[:, :-1])
         actions = actions[:, :-1]
 
-        inactive_agents = th.tensor(list(self.mac.agent.faulty_agent_indices), device=batch.device)
-        active_agents = th.ones(self.n_agents, device=batch.device)
-        active_agents[inactive_agents] = 0
-        active_agents = active_agents.view(1, 1, -1)
+        # inactive_agents = th.tensor(list(self.mac.agent.faulty_agent_indices), device=batch.device)
+        # active_agents = th.ones(self.n_agents, device=batch.device)
+        # active_agents[inactive_agents] = 0
+        # active_agents = active_agents.view(1, 1, -1)
         
         
         if self.args.standardise_rewards:
@@ -82,10 +77,9 @@ class PPOLearner:
 
         # rewards = self.stuck_penalty.shape_rewards(rewards, positions)
         # rewards = self.osc_penalty.shape_rewards(rewards, positions)
-        mask = mask.repeat(1, 1, self.n_agents)
-        mask = mask * active_agents
-        critic_mask = mask.clone()
-
+        mask_org = mask_org.repeat(1, 1, self.n_agents) 
+       
+        
         old_mac_out = []
         self.old_mac.init_hidden(batch.batch_size)
         for t in range(batch.max_seq_length - 1):
@@ -93,7 +87,11 @@ class PPOLearner:
             old_mac_out.append(agent_outs)
         old_mac_out = th.stack(old_mac_out, dim=1)  # Concat over time
         old_pi = old_mac_out
-        old_pi[mask == 0] = 1.0
+        mask_out_old = self.old_mac.mask_forward(batch)
+        mask_old = mask_org * mask_out_old
+        old_pi = old_pi * mask_old.unsqueeze(-1) + (1 - mask_old.unsqueeze(-1))  # No-op for masked agents
+
+        
 
         old_pi_taken = th.gather(old_pi, dim=3, index=actions).squeeze(3)
         old_log_pi_taken = th.log(old_pi_taken + 1e-10)
@@ -105,7 +103,9 @@ class PPOLearner:
                 agent_outs = self.mac.forward(batch, t=t)
                 mac_out.append(agent_outs)
             mac_out = th.stack(mac_out, dim=1)  # Concat over time
-
+            mask_outs = self.mac.mask_forward(batch)
+            mask = mask_org * mask_outs
+            critic_mask = mask.detach().clone() # 10 * 500 * 4
             pi = mac_out
             advantages, critic_train_stats = self.train_critic_sequential(
                 self.critic, self.target_critic, batch, rewards, critic_mask, actions
@@ -113,7 +113,8 @@ class PPOLearner:
             advantages = advantages.detach()
             # Calculate policy grad with mask
 
-            pi[mask == 0] = 1.0
+            pi = pi * mask.unsqueeze(-1) + (1 - mask.unsqueeze(-1))  # No-op for masked agents
+
 
             pi_taken = th.gather(pi, dim=3, index=actions).squeeze(3)
             log_pi_taken = th.log(pi_taken + 1e-10)
@@ -131,18 +132,20 @@ class PPOLearner:
                 -(
                     (th.min(surr1, surr2) + self.args.entropy_coef * entropy) * mask
                 ).sum()
-                / mask.sum()
+                / (mask.sum() + self.epsilon)
             )
             # Epsilon random exploration. 
             # 
 
             # Optimise agents
             self.agent_optimiser.zero_grad()
+            self.mask_optimiser.zero_grad()
             pg_loss.backward()
             grad_norm = th.nn.utils.clip_grad_norm_(
                 self.agent_params, self.args.grad_norm_clip
             )
             self.agent_optimiser.step()
+            self.mask_optimiser.step()
 
         self.old_mac.load_state(self.mac)
 
@@ -173,14 +176,14 @@ class PPOLearner:
 
             self.logger.log_stat(
                 "advantage_mean",
-                (advantages * mask).sum().item() / mask.sum().item(),
+                (advantages * mask).sum().item() / (mask.sum().item() +  self.epsilon),
                 t_env,
             )
             self.logger.log_stat("pg_loss", pg_loss.item(), t_env)
             self.logger.log_stat("agent_grad_norm", grad_norm.item(), t_env)
             self.logger.log_stat(
                 "pi_max",
-                (pi.max(dim=-1)[0] * mask).sum().item() / mask.sum().item(),
+                (pi.max(dim=-1)[0] * mask).sum().item() / (mask.sum().item() + self.epsilon),
                 t_env,
             )
             self.log_stats_t = t_env
@@ -221,7 +224,7 @@ class PPOLearner:
         masked_td_error = td_error * mask  # (batch_size, episode_length, n_agents)
 
         # Compute loss only for active agents
-        loss = (masked_td_error**2).sum() / (mask).sum()
+        loss = (masked_td_error**2).sum() / ((mask).sum() + self.epsilon)
 
 
         self.critic_optimiser.zero_grad()
@@ -233,7 +236,7 @@ class PPOLearner:
 
         running_log["critic_loss"].append(loss.item())
         running_log["critic_grad_norm"].append(grad_norm.item())
-        mask_elems = mask.sum().item()
+        mask_elems = mask.sum().item() +  self.epsilon
         running_log["td_error_abs"].append(
             (masked_td_error.abs().sum().item() / mask_elems)
         )

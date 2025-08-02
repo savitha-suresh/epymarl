@@ -1,6 +1,7 @@
 from modules.agents import REGISTRY as agent_REGISTRY
 from components.action_selectors import REGISTRY as action_REGISTRY
 import torch as th
+from modules.masks.masked_net import MaskNet
 
 
 # This multi-agent controller shares parameters between agents
@@ -19,9 +20,43 @@ class BasicMAC:
     def select_actions(self, ep_batch, t_ep, t_env, bs=slice(None), test_mode=False):
         # Only select actions for the selected batch elements in bs
         avail_actions = ep_batch["avail_actions"][:, t_ep]
-        agent_outputs = self.forward(ep_batch, t_ep, test_mode=test_mode)
+        agent_outputs  = self.forward(ep_batch, t_ep, test_mode=test_mode)
         chosen_actions = self.action_selector.select_action(agent_outputs[bs], avail_actions[bs], t_env, test_mode=test_mode)
         return chosen_actions
+    
+    def mask_forward(self, batch):
+        # batch_obs [10, 500, 4, 71])
+
+        bs = self.args.batch_size
+        
+        n_agents = self.n_agents
+        batch_obs = batch["obs"][:, :-1]
+        seq_len = batch_obs.shape[1]
+        # Start with observation: [bs, seq_len, n_agents, obs_dim]
+        inputs = [batch_obs]  # b s a v
+
+        # Add last action if needed
+        if self.args.obs_last_action:
+            # Create shifted actions_onehot for last actions
+            
+            prev_actions = batch["actions_onehot"][:, :-1].clone()
+            
+            # At t=0, prev action = 0
+            inputs.append(prev_actions)
+
+        # Add agent ID if needed
+        if self.args.obs_agent_id:
+            agent_ids = th.eye(n_agents, device=batch.device).unsqueeze(0).unsqueeze(0)  # [1,1,n_agents,n_agents]
+            agent_ids = agent_ids.expand(bs, seq_len-1, -1, -1)  # [bs, seq_len, n_agents, n_agents]
+            inputs.append(agent_ids)
+
+        # Concatenate on the last dimension
+        # Result: [bs, seq_len, n_agents, input_dim]
+        inputs = th.cat(inputs, dim=-1)
+        inputs = inputs.permute(0, 2, 1, 3)
+        inputs = inputs.flatten(0, 1) 
+        mask_out = self.mask_net(inputs)
+        return mask_out.view(self.args.batch_size, -1, self.n_agents)
 
     def forward(self, ep_batch, t, test_mode=False):
         agent_inputs = self._build_inputs(ep_batch, t)
@@ -43,7 +78,10 @@ class BasicMAC:
         self.hidden_states = self.agent.init_hidden().unsqueeze(0).expand(batch_size, self.n_agents, -1)  # bav
 
     def parameters(self):
-        return self.agent.parameters()
+        return self.agent.parameters() 
+    
+    def mask_parameters(self):
+        return self.mask_net.parameters()
 
     def load_state(self, other_mac):
         self.agent.load_state_dict(other_mac.agent.state_dict())
@@ -59,6 +97,8 @@ class BasicMAC:
 
     def _build_agents(self, input_shape):
         self.agent = agent_REGISTRY[self.args.agent](input_shape, self.args)
+        device = "cuda" if self.args.use_cuda else "cpu"
+        self.mask_net = MaskNet(self.args, input_shape, self.args.hidden_dim).to(device)
 
     def _build_inputs(self, batch, t):
         # Assumes homogenous agents with flat observations.
