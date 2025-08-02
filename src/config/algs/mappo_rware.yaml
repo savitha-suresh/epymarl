@@ -44,7 +44,8 @@ sleep_time: 0.001
 action_fault: False # if true then agent should be rnn not rnn_faulty
 constrained_faults: False # to stall an agent only in the row above goal
 faulty_row: 9
+random_start: True
+comm_location: True
 max_seq_len: 501
 n_heads: 1
-n_layers: 2
-random_start: True
+n_layers: 1

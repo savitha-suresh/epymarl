@@ -154,3 +154,42 @@ class OscillationPenaltyRewardShaper:
         
         shaped_rewards = rewards - penalties
         return shaped_rewards
+
+
+
+
+
+def penalty_faulty_facing(rewards, faulty_indices, obs, penalty_value=-0.25):
+    B, T, A = rewards.shape
+    F = obs.shape[-1]
+    
+    # New mapping: facing_direction -> trigger_index
+    direction_map = {
+        3: 23,  # up -> trigger at 23
+        4: 71,  # down -> trigger at 71
+        5: 39,  # left -> trigger at 39
+        6: 55,  # right -> trigger at 55
+    }
+    
+
+    penalty_mask = th.zeros(B, T, A, dtype=th.bool, device=obs.device)
+    
+    # Use obs[:, :-1] since reward at t comes from obs at t
+    obs_rew = obs[:, :-1, :, :]  # Now shape [B, T, A, F]
+    
+    for face_idx, trigger_idx in direction_map.items():
+        # Check if agent is facing this direction
+        is_facing = obs_rew[:, :, :, face_idx] == 1  # shape [B, T, A]
+        
+        # Check if trigger is active
+        trigger = obs_rew[:, :, :, trigger_idx] == 1  # shape [B, T, A]
+        
+        
+        # Apply penalty where agent is facing direction, trigger is active, AND penalty condition is met
+        penalty_mask |= is_facing & trigger
+    
+    penalty = th.where(penalty_mask, 
+                      th.tensor(penalty_value, device=obs.device), 
+                      th.tensor(0.0, device=obs.device))  # [B, T, A]
+    
+    return rewards + penalty  # [B, T, A]

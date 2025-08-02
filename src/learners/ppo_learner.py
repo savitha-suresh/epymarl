@@ -7,7 +7,7 @@ from torch.optim import Adam
 from components.episode_buffer import EpisodeBatch
 from components.standarize_stream import RunningMeanStd
 from modules.critics import REGISTRY as critic_resigtry
-from components.penalty import StuckPenaltyRewardShaper, OscillationPenaltyRewardShaper
+from components.penalty import StuckPenaltyRewardShaper, OscillationPenaltyRewardShaper, penalty_faulty_facing
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 
@@ -84,10 +84,15 @@ class PPOLearner:
             # reshape rewards to be of shape (batch_size, episode_length, n_agents)
             rewards = rewards.expand(-1, -1, self.n_agents)
 
-        rewards = self.stuck_penalty.shape_rewards(rewards, positions)
-        rewards = self.osc_penalty.shape_rewards(rewards, positions)
+        # rewards = self.stuck_penalty.shape_rewards(rewards, positions)
+        # rewards = self.osc_penalty.shape_rewards(rewards, positions)
+        # obs_faulty = th.zeros(batch["obs"].shape[0], batch["obs"].shape[1], batch["obs"].shape[2], 
+        #                            batch["obs"].shape[3] + 9,  device=batch["obs"].device)
+        # for t in range(batch.max_seq_length - 1):
+        #     obs_faulty[:, t] = self.mac.get_new_obs_with_faults(batch["obs"][:, t], self.args.batch_size)
+        # #rewards = penalty_faulty_facing(rewards, self.mac.agent.faulty_agent_indices, obs_faulty)
         mask = mask.repeat(1, 1, self.n_agents)
-        mask = mask * active_agents
+       # mask = mask * active_agents
         critic_mask = mask.clone()
 
         old_mac_out = []
