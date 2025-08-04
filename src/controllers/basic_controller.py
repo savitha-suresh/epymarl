@@ -197,10 +197,10 @@ class BasicMAC:
         if t_end is None:
             bs = batch.batch_size
             obs_t = batch["obs"][:, t]
-            obs_faulty = self.get_new_obs_with_faults(obs_t, bs)
-            obs_comm_faulty = self.get_obs_with_fault_location(obs_faulty, bs)
+            # obs_faulty = self.get_new_obs_with_faults(obs_t, bs)
+            # obs_comm_faulty = self.get_obs_with_fault_location(obs_faulty, bs)
             inputs = []
-            inputs.append(obs_comm_faulty)
+            inputs.append(obs_t)
             if self.args.obs_last_action:
                 if t == 0:
                     inputs.append(th.zeros_like(batch["actions_onehot"][:, t]))
@@ -237,7 +237,7 @@ class BasicMAC:
             return all_inputs
 
     def _get_input_shape(self, scheme):
-        input_shape = scheme["obs"]["vshape"] + 9 
+        input_shape = scheme["obs"]["vshape"]
         if self.args.obs_last_action:
             input_shape += scheme["actions_onehot"]["vshape"][0]
         if self.args.obs_agent_id:
