@@ -219,10 +219,10 @@ class BasicMAC:
             t_start = t
             for t_step in range(t_start, t_end):
                 obs_t = batch["obs"][:, t_step]
-                obs_faulty = self.get_new_obs_with_faults(obs_t, bs)
-                obs_comm_faulty = self.get_obs_with_fault_location(obs_faulty, bs)
+                # obs_faulty = self.get_new_obs_with_faults(obs_t, bs)
+                # obs_comm_faulty = self.get_obs_with_fault_location(obs_faulty, bs)
                 inputs = []
-                inputs.append(obs_comm_faulty)
+                inputs.append(obs_t)
                 if self.args.obs_last_action:
                     if t_step == 0:
                         inputs.append(th.zeros_like(batch["actions_onehot"][:, t_step]))
