@@ -32,6 +32,7 @@ class BasicMAC:
     
     def forward(self, ep_batch, t, test_mode=False, t_end=None):
         agent_inputs = self._build_inputs(ep_batch, t, t_end=t_end)
+        bs = ep_batch.batch_size
         memory = self.memory
         avail_actions = ep_batch["avail_actions"]
         
@@ -41,6 +42,7 @@ class BasicMAC:
             mem_len=mem_len_now, device=agent_inputs.device)  # [1, mem_len + 1]
         mask = mask.unsqueeze(0).unsqueeze(1)  # [1, 1, seq_len, total_len]
         mask = mask.expand(ep_batch.batch_size * self.n_agents, self.args.n_heads, -1, -1)
+        
         agent_outs, hidden_states = self.agent(agent_inputs, memory=memory, attn_mask=mask)
         self.memory = self.agent.update_memory(memory, hidden_states)
         if t_end is not None:

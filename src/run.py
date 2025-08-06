@@ -87,6 +87,7 @@ def run(_run, _config, _log):
 
 def evaluate_sequential(args, runner):
     for _ in range(args.test_nepisode):
+        runner.mac.agent.init_random_fault()
         runner.mac.agent._faulty = False
         runner.run(test_mode=True)
 
@@ -230,12 +231,18 @@ def run_sequential(args, logger):
 
             last_test_T = runner.t_env
             for _ in range(n_test_runs):
+                runner.mac.agent.init_random_fault()
                 runner.mac.agent._faulty = False
                 runner.run(test_mode=True)
         if args.random_start:
             if not args.action_fault:
+                learner.mac.agent.init_random_fault()
+                learner.old_mac.agent.init_random_fault()
                 learner.mac.agent._faulty = False
                 learner.old_mac.agent._faulty = False
+        # if runner.t_env % args.change_faulty_interval == 0:
+        #     learner.mac.agent.change_faulty_agent()
+        #     learner.old_mac.agent.change_faulty_agent()
         if args.save_model and (
             runner.t_env - model_save_time >= args.save_model_interval
             or model_save_time == 0
