@@ -234,15 +234,6 @@ def run_sequential(args, logger):
                 #runner.mac.agent.init_random_fault()
                 runner.mac.agent._faulty = False
                 runner.run(test_mode=True)
-        if args.random_start:
-            if not args.action_fault:
-                # learner.mac.agent.init_random_fault()
-                # learner.old_mac.agent.init_random_fault()
-                learner.mac.agent._faulty = False
-                learner.old_mac.agent._faulty = False
-        # if runner.t_env % args.change_faulty_interval == 0:
-        #     learner.mac.agent.change_faulty_agent()
-        #     learner.old_mac.agent.change_faulty_agent()
         if args.save_model and (
             runner.t_env - model_save_time >= args.save_model_interval
             or model_save_time == 0
@@ -275,6 +266,16 @@ def run_sequential(args, logger):
             logger.log_stat("episode", episode, runner.t_env)
             logger.print_recent_stats()
             last_log_T = runner.t_env
+
+        if args.random_start:
+            if not args.action_fault:
+                # learner.mac.agent.init_random_fault()
+                # learner.old_mac.agent.init_random_fault()
+                learner.mac.agent._faulty = False
+                learner.old_mac.agent._faulty = False
+        if episode % args.change_faulty_interval == 0:
+            learner.mac.agent.change_faulty_agent()
+            learner.old_mac.agent.change_faulty_agent()
 
     runner.close_env()
     logger.console_logger.info("Finished Training")

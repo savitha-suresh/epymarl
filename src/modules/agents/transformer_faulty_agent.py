@@ -17,8 +17,8 @@ class TransformerFaultyAgent(TransformerAgent):
         if self.args.action_fault:
             raise ValueError("Cannot use this network fault with action_fault set to True")
         self._faulty = False
-        #self.faulty_agent_indices = set([0])
-        self.init_random_fault()
+        self.faulty_agent_indices = set([0])
+        #self.init_random_fault()
         self.faulty_row = self.args.faulty_row
         self.prev_faulty = 0
         self.no_op_action = 0
@@ -30,8 +30,10 @@ class TransformerFaultyAgent(TransformerAgent):
         print(f"Agents {self.faulty_agent_indices} have become network faulty!")
     
     def change_faulty_agent(self):
-       
-        self.faulty_agent_indices = set([(self.prev_faulty+1)%self.args.n_agents])
+        # Change the faulty agent to the next one in line
+        self.prev_faulty = (self.prev_faulty + 1) % self.args.n_agents
+        self.faulty_agent_indices = set([self.prev_faulty])
+        print(f"Agents {self.faulty_agent_indices} have become network faulty!")
         #self._faulty = False
         
     def forward(self, inputs, memory=None, attn_mask=None):
