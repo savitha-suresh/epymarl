@@ -103,15 +103,11 @@ class PPOLearner:
         indicator, latent, latent_vae = self.old_mac.init_latent(batch.batch_size)
         for t in range(0, batch.max_seq_length - 1, self.segment_len):
             t_end = min(t + self.segment_len, batch.max_seq_length - 1)
-            agent_outs, loss_, dis_loss_, ce_loss_  = self.old_mac.forward(batch, t=t, t_end=t_end, t_glob=t_env, train_mode=True)
+            agent_outs, _, _, _  = self.old_mac.forward(batch, t=t, t_end=t_end, t_glob=t_env, train_mode=True)
             old_mac_out.append(agent_outs)
-            reg_loss += loss_
-            dis_loss += dis_loss_
-            ce_loss += ce_loss_
+            
 
-        reg_loss /= batch.max_seq_length
-        dis_loss /= batch.max_seq_length
-        ce_loss /= batch.max_seq_length
+        
 
 
         old_mac_out = th.cat(old_mac_out, dim=1)  # Concat over time
@@ -123,14 +119,22 @@ class PPOLearner:
         
         for k in range(self.args.epochs):
             mac_out = []
+            reg_loss = 0
+            dis_loss = 0
+            ce_loss = 0
             self.mac.init_hidden(batch.batch_size)
             self.mac.init_latent(batch.batch_size)
             for t in range(0, batch.max_seq_length - 1, self.segment_len):
                 t_end = min(t + self.segment_len, batch.max_seq_length - 1)
-                agent_outs, loss_cs_target, _, _ = self.mac.forward(batch, t=t, t_end=t_end)
+                agent_outs, loss_, dis_loss_, ce_loss_  = self.mac.forward(batch, t=t, t_end=t_end)
+                reg_loss += loss_
+                dis_loss += dis_loss_
+                ce_loss += ce_loss_
                 mac_out.append(agent_outs)
             mac_out = th.cat(mac_out, dim=1)  # Concat over time
-
+            reg_loss /= batch.max_seq_length
+            dis_loss /= batch.max_seq_length
+            ce_loss /= batch.max_seq_length
             pi = mac_out
             advantages, critic_train_stats = self.train_critic_sequential(
                 self.critic, self.target_critic, batch, rewards, critic_mask, actions, reg_loss
