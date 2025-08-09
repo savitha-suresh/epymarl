@@ -137,7 +137,7 @@ class PPOLearner:
             ce_loss /= batch.max_seq_length
             pi = mac_out
             advantages, critic_train_stats = self.train_critic_sequential(
-                self.critic, self.target_critic, batch, rewards, critic_mask, actions, reg_loss
+                self.critic, self.target_critic, batch, rewards, critic_mask, actions
             )
             advantages = advantages.detach()
             
@@ -165,7 +165,7 @@ class PPOLearner:
             )
             # Epsilon random exploration. 
             # 
-
+            pg_loss += reg_loss
             # Optimise agents
             self.agent_optimiser.zero_grad()
             pg_loss.backward()
@@ -235,7 +235,7 @@ class PPOLearner:
             )
             self.log_stats_t = t_env
 
-    def train_critic_sequential(self, critic, target_critic, batch, rewards, mask, actions=None, reg_loss=None):
+    def train_critic_sequential(self, critic, target_critic, batch, rewards, mask, actions=None):
         # Optimise critic
         
         with th.no_grad():
@@ -273,8 +273,6 @@ class PPOLearner:
         # Compute loss only for active agents
         loss = (masked_td_error**2).sum() / (mask).sum()
 
-        if reg_loss:
-            loss += reg_loss
 
 
         self.critic_optimiser.zero_grad()

@@ -360,8 +360,8 @@ class TransformerAgent(nn.Module):
         # Role -> FC2 Params
         latent = self.latent_net(latent)
 
-        fc2_w = self.fc2_w_nn(latent)
-        fc2_b = self.fc2_b_nn(latent)
+        fc2_w = self.fc2_w_nn(torch.zeros_like(latent))
+        fc2_b = self.fc2_b_nn(torch.zeros_like(latent))
         fc2_w = fc2_w.reshape(-1, self.args.hidden_dim, self.args.n_actions)
         fc2_b = fc2_b.reshape((-1, 1, self.args.n_actions))
 
