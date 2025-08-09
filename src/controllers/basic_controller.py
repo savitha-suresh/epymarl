@@ -20,7 +20,7 @@ class BasicMAC:
         # Only select actions for the selected batch elements in bs
         avail_actions = ep_batch["avail_actions"][:, t_ep]
         self.agent.eval()
-        agent_outputs = self.forward(ep_batch, t_ep, test_mode=test_mode)
+        agent_outputs, _, _, _ = self.forward(ep_batch, t_ep, test_mode=test_mode)
         chosen_actions = self.action_selector.select_action(agent_outputs[bs], avail_actions[bs], t_env, test_mode=test_mode)
         return chosen_actions
 
@@ -30,7 +30,7 @@ class BasicMAC:
         mask = th.triu(th.ones(seq_len, total_len, device=device) * float('-inf'), diagonal=1)
         return mask 
     
-    def forward(self, ep_batch, t, test_mode=False, t_end=None):
+    def forward(self, ep_batch, t, test_mode=False, t_end=None, t_glob=0, train_mode=False):
         agent_inputs = self._build_inputs(ep_batch, t, t_end=t_end)
         memory = self.memory
         avail_actions = ep_batch["avail_actions"]
@@ -41,7 +41,7 @@ class BasicMAC:
             mem_len=mem_len_now, device=agent_inputs.device)  # [1, mem_len + 1]
         mask = mask.unsqueeze(0).unsqueeze(1)  # [1, 1, seq_len, total_len]
         mask = mask.expand(ep_batch.batch_size * self.n_agents, self.args.n_heads, -1, -1)
-        agent_outs, hidden_states = self.agent(agent_inputs, memory=memory, attn_mask=mask)
+        agent_outs, hidden_states, l1, l2, l3 = self.agent(agent_inputs, memory=memory, attn_mask=mask, t_glob=t_glob, train_mode=train_mode)
         self.memory = self.agent.update_memory(memory, hidden_states)
         if t_end is not None:
             avail_actions = avail_actions[:, t:t_end]
@@ -63,11 +63,15 @@ class BasicMAC:
             agent_outs_view = agent_outs.view(ep_batch.batch_size, T, self.n_agents, F)
         else:
             agent_outs_view = agent_outs.view(ep_batch.batch_size, self.n_agents, -1)
-        return agent_outs_view
+        return agent_outs_view, l1, l2, l3
 
     def init_hidden(self, batch_size):
         #self.hidden_states = self.agent.init_hidden().unsqueeze(0).expand(batch_size, self.n_agents, -1)  # bav
         self.memory = self.agent.init_memory(batch_size)
+
+    def init_latent(self, batch_size):
+        return self.agent.init_latent(batch_size)
+    
     def parameters(self):
         return self.agent.parameters()
 

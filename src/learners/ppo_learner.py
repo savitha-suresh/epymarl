@@ -97,10 +97,23 @@ class PPOLearner:
 
         old_mac_out = []
         self.old_mac.init_hidden(batch.batch_size)
+        reg_loss = 0
+        dis_loss = 0
+        ce_loss = 0
+        indicator, latent, latent_vae = self.old_mac.init_latent(batch.batch_size)
         for t in range(0, batch.max_seq_length - 1, self.segment_len):
             t_end = min(t + self.segment_len, batch.max_seq_length - 1)
-            agent_outs = self.old_mac.forward(batch, t=t, t_end=t_end)
+            agent_outs, loss_, dis_loss_, ce_loss_  = self.old_mac.forward(batch, t=t, t_end=t_end, t_glob=t_env, train_mode=True)
             old_mac_out.append(agent_outs)
+            reg_loss += loss_
+            dis_loss += dis_loss_
+            ce_loss += ce_loss_
+
+        reg_loss /= batch.max_seq_length
+        dis_loss /= batch.max_seq_length
+        ce_loss /= batch.max_seq_length
+
+
         old_mac_out = th.cat(old_mac_out, dim=1)  # Concat over time
         old_pi = old_mac_out
         old_pi[mask == 0] = 1.0
@@ -111,17 +124,19 @@ class PPOLearner:
         for k in range(self.args.epochs):
             mac_out = []
             self.mac.init_hidden(batch.batch_size)
+            self.mac.init_latent(batch.batch_size)
             for t in range(0, batch.max_seq_length - 1, self.segment_len):
                 t_end = min(t + self.segment_len, batch.max_seq_length - 1)
-                agent_outs = self.mac.forward(batch, t=t, t_end=t_end)
+                agent_outs, loss_cs_target, _, _ = self.mac.forward(batch, t=t, t_end=t_end)
                 mac_out.append(agent_outs)
             mac_out = th.cat(mac_out, dim=1)  # Concat over time
 
             pi = mac_out
             advantages, critic_train_stats = self.train_critic_sequential(
-                self.critic, self.target_critic, batch, rewards, critic_mask, actions
+                self.critic, self.target_critic, batch, rewards, critic_mask, actions, reg_loss
             )
             advantages = advantages.detach()
+            
             # Calculate policy grad with mask
 
             pi[mask == 0] = 1.0
@@ -184,6 +199,24 @@ class PPOLearner:
                     key, sum(critic_train_stats[key]) / ts_logged, t_env
                 )
 
+
+
+            self.logger.log_stat("loss_reg", reg_loss.item(), t_env)
+            self.logger.log_stat("loss_dis", dis_loss.item(), t_env)
+            self.logger.log_stat("loss_ce", ce_loss.item(), t_env)
+
+            #indicator=[var_mean,mi.max(),mi.min(),mi.mean(),mi.std(),di.max(),di.min(),di.mean(),di.std()]
+            self.logger.log_stat("var_mean", indicator[0].item(), t_env)
+            self.logger.log_stat("mi_max", indicator[1].item(), t_env)
+            self.logger.log_stat("mi_min", indicator[2].item(), t_env)
+            self.logger.log_stat("mi_mean", indicator[3].item(), t_env)
+            self.logger.log_stat("mi_std", indicator[4].item(), t_env)
+            self.logger.log_stat("di_max", indicator[5].item(), t_env)
+            self.logger.log_stat("di_min", indicator[6].item(), t_env)
+            self.logger.log_stat("di_mean", indicator[7].item(), t_env)
+            self.logger.log_stat("di_std", indicator[8].item(), t_env)
+
+
             self.logger.log_stat(
                 "advantage_mean",
                 (advantages * mask).sum().item() / mask.sum().item(),
@@ -198,7 +231,7 @@ class PPOLearner:
             )
             self.log_stats_t = t_env
 
-    def train_critic_sequential(self, critic, target_critic, batch, rewards, mask, actions=None):
+    def train_critic_sequential(self, critic, target_critic, batch, rewards, mask, actions=None, reg_loss=None):
         # Optimise critic
         
         with th.no_grad():
@@ -235,6 +268,9 @@ class PPOLearner:
 
         # Compute loss only for active agents
         loss = (masked_td_error**2).sum() / (mask).sum()
+
+        if reg_loss:
+            loss += reg_loss
 
 
         self.critic_optimiser.zero_grad()

@@ -27,14 +27,14 @@ class TransformerFaultyAgent(TransformerAgent):
         self._faulty = False
         print(f"Agents {self.faulty_agent_indices} have become network faulty!")
 
-    def forward(self, inputs, memory=None, attn_mask=None):
+    def forward(self, inputs, memory=None, attn_mask=None, t_glob=0, train_mode=False):
         # Check if we should make agents faulty
         if self.faulty_agent_indices and not self._faulty and random.random() < self.args.fault_prob:
             self._faulty = True
             
             
         # Get regular Q-values/logits from parent class
-        q, h = super().forward(inputs, memory=memory, attn_mask=attn_mask)
+        q, h, loss_1, loss_2, loss_3  = super().forward(inputs, memory=memory, attn_mask=attn_mask)
         if self.faulty_agent_indices and self._faulty:
             # For interleaved data, faulty agents appear every n_agents rows
             for faulty_idx in self.faulty_agent_indices:
@@ -58,4 +58,4 @@ class TransformerFaultyAgent(TransformerAgent):
                         q[q_index, :, 0] = 1e10
                         q[q_index, :, 1:] = -1e10
 
-        return q, h
+        return q, h, loss_1, loss_2, loss_3
