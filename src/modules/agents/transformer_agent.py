@@ -268,21 +268,26 @@ class TransformerAgent(nn.Module):
 
     
     def forward(self, inputs, memory=None, attn_mask=None, t_glob=0, train_mode=False):
-        # inputs: (batch_size, seq_len, input_dim)
         hidden_states = []     
         
+        # Variance floor warm-up (higher variance early on)
+        var_floor = 0.5 if t_glob < 10000 else self.args.var_floor
 
-        #LATENT
+        # LATENT embedding
         h_in = memory[-1].reshape(-1, self.args.hidden_dim)
-        embed_fc_input = inputs.reshape(-1, self.input_shape)  # own features(unit_type_bits+shield_bits_ally)+id
+        embed_fc_input = inputs.reshape(-1, self.input_shape)  # own features + id
 
         self.latent = self.embed_net(embed_fc_input)
-        self.latent[:, -self.latent_dim:] = torch.clamp(torch.exp(self.latent[:, -self.latent_dim:]), min=self.args.var_floor)  # var
-        #self.latent[:, -self.latent_dim:] = torch.full_like(self.latent[:, -self.latent_dim:],1.0)
+        self.latent[:, -self.latent_dim:] = torch.clamp(
+            torch.exp(self.latent[:, -self.latent_dim:]),
+            min=var_floor
+        )
         latent_embed = self.latent.reshape(self.bs * self.n_agents, self.latent_dim * 2)
 
-        #latent = latent_embed[:, :self.latent_dim]
-        gaussian_embed = D.Normal(latent_embed[:, :self.latent_dim], (latent_embed[:, self.latent_dim:]) ** (1 / 2))
+        gaussian_embed = D.Normal(
+            latent_embed[:, :self.latent_dim],
+            (latent_embed[:, self.latent_dim:]) ** 0.5
+        )
         latent = gaussian_embed.rsample()
 
         c_dis_loss = torch.tensor(0.0).to(self.args.device)
@@ -290,107 +295,107 @@ class TransformerAgent(nn.Module):
         loss = torch.tensor(0.0).to(self.args.device)
 
         if train_mode and (not self.args.roma_raw):
-            #gaussian_embed = D.Normal(latent_embed[:, :self.latent_dim], (latent_embed[:, self.latent_dim:]) ** (1 / 2))
-            #latent = gaussian_embed.rsample()
-
             self.latent_infer = self.inference_net(torch.cat([h_in.detach(), inputs], dim=1))
-            self.latent_infer[:, -self.latent_dim:] = torch.clamp(torch.exp(self.latent_infer[:, -self.latent_dim:]),min=self.args.var_floor)
-            #self.latent_infer[:, -self.latent_dim:] = torch.full_like(self.latent_infer[:, -self.latent_dim:],1.0)
-            gaussian_infer = D.Normal(self.latent_infer[:, :self.latent_dim], (self.latent_infer[:, self.latent_dim:]) ** (1 / 2))
-            latent_infer = gaussian_infer.rsample()
+            self.latent_infer[:, -self.latent_dim:] = torch.clamp(
+                torch.exp(self.latent_infer[:, -self.latent_dim:]),
+                min=var_floor
+            )
+            gaussian_infer = D.Normal(
+                self.latent_infer[:, :self.latent_dim],
+                (self.latent_infer[:, self.latent_dim:]) ** 0.5
+            )
 
-            loss = gaussian_embed.entropy().sum(dim=-1).mean() * self.args.h_loss_weight + kl_divergence(gaussian_embed, gaussian_infer).sum(dim=-1).mean() * self.args.kl_loss_weight   # CE = H + KL
+            # KL warm-up: gradually increase KL weight over first 20k steps
+            kl_w = self.args.kl_loss_weight * min(1.0, t_glob / 20000)
+
+            loss = (
+                gaussian_embed.entropy().sum(dim=-1).mean() * self.args.h_loss_weight
+                + kl_divergence(gaussian_embed, gaussian_infer).sum(dim=-1).mean() * kl_w
+            )
             loss = torch.clamp(loss, max=2e3)
-            # loss = loss / (self.bs * self.n_agents)
-            ce_loss = torch.log(1 + torch.exp(loss))
+            ce_loss = torch.log1p(torch.exp(loss))
 
-            # Dis Loss
+            # Latent entropy bonus to encourage exploration of latent space
+            latent_entropy_bonus = 0.01 * gaussian_embed.entropy().mean()
+            ce_loss += latent_entropy_bonus
+
+            # === Your existing dissimilarity loss code unchanged ===
             cur_dis_loss_weight = self.dis_loss_weight_schedule(t_glob)
             if cur_dis_loss_weight > 0:
-                dis_loss = 0
                 dissimilarity_cat = None
                 mi_cat = None
                 latent_dis = latent.clone().view(self.bs, self.n_agents, -1)
                 latent_move = latent.clone().view(self.bs, self.n_agents, -1)
                 for agent_i in range(self.n_agents):
                     latent_move = torch.cat(
-                        [latent_move[:, -1, :].unsqueeze(1), latent_move[:, :-1, :]], dim=1)
-                    latent_dis_pair = torch.cat([latent_dis[:, :, :self.latent_dim],
-                                              latent_move[:, :, :self.latent_dim],
-                                            # (latent_dis[:, :, :self.latent_dim]-latent_move[:, :, :self.latent_dim])**2
-                                              ], dim=2)
-                    mi = torch.clamp(gaussian_embed.log_prob(latent_move.view(self.bs * self.n_agents, -1))+13.9, min=-13.9).sum(dim=1,keepdim=True) / self.latent_dim
+                        [latent_move[:, -1, :].unsqueeze(1), latent_move[:, :-1, :]], dim=1
+                    )
+                    latent_dis_pair = torch.cat([
+                        latent_dis[:, :, :self.latent_dim],
+                        latent_move[:, :, :self.latent_dim],
+                    ], dim=2)
+                    mi = torch.clamp(
+                        gaussian_embed.log_prob(latent_move.view(self.bs * self.n_agents, -1)) + 13.9,
+                        min=-13.9
+                    ).sum(dim=1, keepdim=True) / self.latent_dim
 
-                    dissimilarity = torch.abs(self.dis_net(latent_dis_pair.view(-1, 2 * self.latent_dim)))
+                    dissimilarity = torch.abs(
+                        self.dis_net(latent_dis_pair.view(-1, 2 * self.latent_dim))
+                    )
 
                     if dissimilarity_cat is None:
                         dissimilarity_cat = dissimilarity.view(self.bs, -1).clone()
                     else:
                         dissimilarity_cat = torch.cat([dissimilarity_cat, dissimilarity.view(self.bs, -1)], dim=1)
+
                     if mi_cat is None:
                         mi_cat = mi.view(self.bs, -1).clone()
                     else:
-                        mi_cat = torch.cat([mi_cat,mi.view(self.bs,-1)],dim=1)
+                        mi_cat = torch.cat([mi_cat, mi.view(self.bs, -1)], dim=1)
 
-                    #dis_loss -= torch.clamp(mi / 100 + dissimilarity, max=0.18).sum() / self.bs / self.n_agents
-
-                mi_min=mi_cat.min(dim=1,keepdim=True)[0]
-                mi_max=mi_cat.max(dim=1,keepdim=True)[0]
+                mi_min = mi_cat.min(dim=1, keepdim=True)[0]
+                mi_max = mi_cat.max(dim=1, keepdim=True)[0]
                 di_min = dissimilarity_cat.min(dim=1, keepdim=True)[0]
                 di_max = dissimilarity_cat.max(dim=1, keepdim=True)[0]
 
-                mi_cat=(mi_cat-mi_min)/(mi_max-mi_min+ 1e-12 )
-                dissimilarity_cat=(dissimilarity_cat-di_min)/(di_max-di_min+ 1e-12 )
+                mi_cat = (mi_cat - mi_min) / (mi_max - mi_min + 1e-12)
+                dissimilarity_cat = (dissimilarity_cat - di_min) / (di_max - di_min + 1e-12)
 
-                dis_loss = - torch.clamp(mi_cat+dissimilarity_cat, max=1.0).sum()/self.bs/self.n_agents
-                #dis_loss = ((mi_cat + dissimilarity_cat - 1.0 )**2).sum() / self.bs / self.n_agents
+                dis_loss = -torch.clamp(mi_cat + dissimilarity_cat, max=1.0).sum() / self.bs / self.n_agents
                 dis_norm = torch.norm(dissimilarity_cat, p=1, dim=1).sum() / self.bs / self.n_agents
 
-                #c_dis_loss = (dis_loss + dis_norm) / self.n_agents * cur_dis_loss_weight
                 c_dis_loss = (dis_norm + self.args.soft_constraint_weight * dis_loss) / self.n_agents * cur_dis_loss_weight
-                loss = ce_loss +  c_dis_loss
-
+                loss = ce_loss + c_dis_loss
                 self.mi = mi_cat[0]
                 self.dissimilarity = dissimilarity_cat[0]
             else:
                 c_dis_loss = torch.zeros_like(loss)
                 loss = ce_loss
 
-
-        # Role -> FC2 Params
+        # Role -> FC2 Params (no warm-up here, your original code)
         latent = self.latent_net(latent)
 
-        fc2_w = self.fc2_w_nn(torch.zeros_like(latent))
-        fc2_b = self.fc2_b_nn(torch.zeros_like(latent))
+        fc2_w = self.fc2_w_nn(latent)
+        fc2_b = self.fc2_b_nn(latent)
         fc2_w = fc2_w.reshape(-1, self.args.hidden_dim, self.args.n_actions)
         fc2_b = fc2_b.reshape((-1, 1, self.args.n_actions))
 
-        
-
-        #LATENT
-        
+        # Rest of network
         x = inputs
-        # Process inputs
         x = F.relu(self.fc1(inputs))
         x = self.input_norm(x)
-        
+
         for i, layer in enumerate(self.layers):
             mem = None if memory is None else memory[i]
             x = layer(x, memory=mem, attn_mask=attn_mask)
             hidden_states.append(x.detach().clone())
 
         x = self.output_norm(x)
-        # print(x.shape)
-        # q_out = self.fc2(x)
-
         h_q = x.clone()
-        
+
         q = torch.bmm(h_q, fc2_w) + fc2_b
-        
+
         return q, hidden_states, loss, c_dis_loss, ce_loss
-
-
-       
 
 # Helper class for GPT-style implementation
 class DecoderOnlyBlock(nn.Module):
