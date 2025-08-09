@@ -126,7 +126,7 @@ class PPOLearner:
             self.mac.init_latent(batch.batch_size)
             for t in range(0, batch.max_seq_length - 1, self.segment_len):
                 t_end = min(t + self.segment_len, batch.max_seq_length - 1)
-                agent_outs, loss_, dis_loss_, ce_loss_  = self.mac.forward(batch, t=t, t_end=t_end)
+                agent_outs, loss_, dis_loss_, ce_loss_  = self.mac.forward(batch, t=t, t_end=t_end, t_glob=t_env, train_mode=True)
                 reg_loss += loss_
                 dis_loss += dis_loss_
                 ce_loss += ce_loss_
