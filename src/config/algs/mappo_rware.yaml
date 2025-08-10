@@ -49,4 +49,5 @@ comm_location: False
 max_seq_len: 501
 n_heads: 1
 n_layers: 1
-embed_dim: 8
+embed_dim: 16
+faulty_embed_dim: 4

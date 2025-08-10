@@ -145,7 +145,7 @@ class TransformerAgent(nn.Module):
         self.max_seq_len = args.max_seq_len
         self._faulty = False
         self.faulty_agent_indices = {}
-        self.fc1 = nn.Linear(input_shape + args.embed_dim * 2, args.hidden_dim)  # Projects input to model dim
+        self.fc1 = nn.Linear(input_shape + args.embed_dim + args.faulty_embed_dim, args.hidden_dim)  # Projects input to model dim
         self.input_norm = nn.LayerNorm(args.hidden_dim)  # Normalize inputs
         self.n_layers = args.n_layers
         # Create decoder blocks without cross-attention (more like GPT architecture)
@@ -157,7 +157,7 @@ class TransformerAgent(nn.Module):
         ) for _ in range(args.n_layers)])
         self.mem_len = 250
         self.agent_id_embedding = torch.nn.Embedding(args.n_agents, args.embed_dim)
-        self.faulty_embedding = torch.nn.Embedding(args.n_agents, args.embed_dim)
+        self.faulty_embedding = torch.nn.Embedding(2, args.faulty_embed_dim)
         self.output_norm = nn.LayerNorm(args.hidden_dim)
         self.fc2 = nn.Linear(args.hidden_dim, args.n_actions)
         self.memories = [None for _ in range(args.n_layers)]
@@ -199,7 +199,7 @@ class TransformerAgent(nn.Module):
 # Expand embedding to match sequence length dimension
         
         # Concatenate along last dim
-        x = torch.cat([inputs, agent_embed], dim=-1)
+        
         if self._faulty:
             # Add faulty embedding
             faulty_agent_indices = self.faulty_agent_indices
@@ -207,8 +207,10 @@ class TransformerAgent(nn.Module):
             faulty_embed = self.faulty_embedding(faulty_flag)
             faulty_embed = faulty_embed.unsqueeze(1).expand(-1, inputs.size(1), -1)
         else:
-            faulty_embed = torch.zeros_like(agent_embed)
-        x = torch.cat([x, faulty_embed], dim=-1)
+            faulty_embed = torch.zeros((inputs.size(0), inputs.size(1), self.faulty_embedding.embedding_dim), device=inputs.device)
+
+        x = torch.cat([inputs, faulty_embed], dim=-1)
+        x = torch.cat([x, agent_embed], dim=-1)
         # x = inputs
         # Process inputs
         x = F.relu(self.fc1(x))
