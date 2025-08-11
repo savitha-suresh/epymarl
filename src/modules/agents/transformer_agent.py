@@ -200,15 +200,15 @@ class TransformerAgent(nn.Module):
         
         # Concatenate along last dim
         
-        #if self._faulty:
+        if self._faulty:
             # Add faulty embedding
-        faulty_agent_indices = self.faulty_agent_indices
-        faulty_flag = torch.isin(self.agent_ids, torch.tensor(list(faulty_agent_indices), device=inputs.device)).long()
+            faulty_agent_indices = self.faulty_agent_indices
+            faulty_flag = torch.isin(self.agent_ids, torch.tensor(list(faulty_agent_indices), device=inputs.device)).long()
+        else:
+            faulty_flag = torch.zeros_like(self.agent_ids, dtype=torch.long, device=inputs.device)
+
         faulty_embed = self.faulty_embedding(faulty_flag)
         faulty_embed = faulty_embed.unsqueeze(1).expand(-1, inputs.size(1), -1)
-        # else:
-        #     faulty_embed = torch.zeros((inputs.size(0), inputs.size(1), self.faulty_embedding.embedding_dim), device=inputs.device)
-
         x = torch.cat([inputs, faulty_embed], dim=-1)
         #x = torch.cat([x, agent_embed], dim=-1)
         # x = inputs
