@@ -145,7 +145,7 @@ class TransformerAgent(nn.Module):
         self.max_seq_len = args.max_seq_len
         self._faulty = False
         self.faulty_agent_indices = {}
-        self.fc1 = nn.Linear(input_shape + args.embed_dim + args.faulty_embed_dim, args.hidden_dim)  # Projects input to model dim
+        self.fc1 = nn.Linear(input_shape + args.faulty_embed_dim, args.hidden_dim)  # Projects input to model dim
         self.input_norm = nn.LayerNorm(args.hidden_dim)  # Normalize inputs
         self.n_layers = args.n_layers
         # Create decoder blocks without cross-attention (more like GPT architecture)
@@ -190,8 +190,8 @@ class TransformerAgent(nn.Module):
     def forward(self, inputs, memory=None, attn_mask=None):
         # inputs: (batch_size, seq_len, input_dim)
         hidden_states = []     
-        agent_embed = self.agent_id_embedding(self.agent_ids)  # shape: [bs * n_agents, embed_dim]
-        agent_embed = agent_embed.unsqueeze(1).expand(-1, inputs.size(1), -1)  # [bs*n_agents, seq_len, embed_dim]
+        # agent_embed = self.agent_id_embedding(self.agent_ids)  # shape: [bs * n_agents, embed_dim]
+        # agent_embed = agent_embed.unsqueeze(1).expand(-1, inputs.size(1), -1)  # [bs*n_agents, seq_len, embed_dim]
 
         
         # agent_embed = F.dropout(agent_embed, p=0.3)
@@ -200,17 +200,17 @@ class TransformerAgent(nn.Module):
         
         # Concatenate along last dim
         
-        if self._faulty:
+        #if self._faulty:
             # Add faulty embedding
-            faulty_agent_indices = self.faulty_agent_indices
-            faulty_flag = torch.isin(self.agent_ids, torch.tensor(list(faulty_agent_indices), device=inputs.device)).long()
-            faulty_embed = self.faulty_embedding(faulty_flag)
-            faulty_embed = faulty_embed.unsqueeze(1).expand(-1, inputs.size(1), -1)
-        else:
-            faulty_embed = torch.zeros((inputs.size(0), inputs.size(1), self.faulty_embedding.embedding_dim), device=inputs.device)
+        faulty_agent_indices = self.faulty_agent_indices
+        faulty_flag = torch.isin(self.agent_ids, torch.tensor(list(faulty_agent_indices), device=inputs.device)).long()
+        faulty_embed = self.faulty_embedding(faulty_flag)
+        faulty_embed = faulty_embed.unsqueeze(1).expand(-1, inputs.size(1), -1)
+        # else:
+        #     faulty_embed = torch.zeros((inputs.size(0), inputs.size(1), self.faulty_embedding.embedding_dim), device=inputs.device)
 
         x = torch.cat([inputs, faulty_embed], dim=-1)
-        x = torch.cat([x, agent_embed], dim=-1)
+        #x = torch.cat([x, agent_embed], dim=-1)
         # x = inputs
         # Process inputs
         x = F.relu(self.fc1(x))
