@@ -273,9 +273,9 @@ def run_sequential(args, logger):
                 # learner.old_mac.agent.init_random_fault()
                 learner.mac.agent._faulty = False
                 learner.old_mac.agent._faulty = False
-        if episode % args.change_faulty_interval == 0:
-            learner.mac.agent.change_faulty_agent()
-            learner.old_mac.agent.change_faulty_agent()
+        # if episode % args.change_faulty_interval == 0:
+        #     learner.mac.agent.change_faulty_agent()
+        #     learner.old_mac.agent.change_faulty_agent()
 
     runner.close_env()
     logger.console_logger.info("Finished Training")
