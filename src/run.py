@@ -233,6 +233,10 @@ def run_sequential(args, logger):
             for _ in range(n_test_runs):
                 #runner.mac.agent.init_random_fault()
                 runner.mac.agent._faulty = False
+                perm = th.perm(
+                    args.n_agents, 
+                    device=args.device).unsqueeze(0).expand(args.batch_size, -1).reshape(-1)
+                runner.mac.agent.agent_ids = perm.clone()
                 runner.run(test_mode=True)
         if args.save_model and (
             runner.t_env - model_save_time >= args.save_model_interval
@@ -273,6 +277,13 @@ def run_sequential(args, logger):
                 # learner.old_mac.agent.init_random_fault()
                 learner.mac.agent._faulty = False
                 learner.old_mac.agent._faulty = False
+                runner.mac.agent._faulty = False
+                perm = th.perm(
+                    args.n_agents, 
+                    device=args.device).unsqueeze(0).expand(args.batch_size, -1).reshape(-1)
+                learner.mac.agent.agent_ids = perm.clone()
+                learner.old_mac.agent.agent_ids = perm.clone()
+                runner.mac.agent.agent_ids = perm.clone()
         # if episode % args.change_faulty_interval == 0:
         #     learner.mac.agent.change_faulty_agent()
         #     learner.old_mac.agent.change_faulty_agent()

@@ -43,7 +43,7 @@ class BasicMAC:
         mask = mask.unsqueeze(0).unsqueeze(1)  # [1, 1, seq_len, total_len]
         mask = mask.expand(ep_batch.batch_size * self.n_agents, self.args.n_heads, -1, -1)
         
-        agent_outs, hidden_states = self.agent(agent_inputs, memory=memory, attn_mask=mask)
+        agent_outs, hidden_states = self.agent(agent_inputs, memory=memory, attn_mask=mask, test_mode=test_mode)
         self.memory = self.agent.update_memory(memory, hidden_states)
         if t_end is not None:
             avail_actions = avail_actions[:, t:t_end]

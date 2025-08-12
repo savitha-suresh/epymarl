@@ -145,7 +145,7 @@ class TransformerAgent(nn.Module):
         self.max_seq_len = args.max_seq_len
         self._faulty = False
         self.faulty_agent_indices = {}
-        self.fc1 = nn.Linear(input_shape + args.faulty_embed_dim, args.hidden_dim)  # Projects input to model dim
+        self.fc1 = nn.Linear(input_shape + args.faulty_embed_dim + args.embed_dim, args.hidden_dim)  # Projects input to model dim
         self.input_norm = nn.LayerNorm(args.hidden_dim)  # Normalize inputs
         self.n_layers = args.n_layers
         # Create decoder blocks without cross-attention (more like GPT architecture)
@@ -187,15 +187,15 @@ class TransformerAgent(nn.Module):
         
         
     
-    def forward(self, inputs, memory=None, attn_mask=None):
+    def forward(self, inputs, memory=None, attn_mask=None, test_mode=False):
         # inputs: (batch_size, seq_len, input_dim)
-        hidden_states = []     
-        # agent_embed = self.agent_id_embedding(self.agent_ids)  # shape: [bs * n_agents, embed_dim]
-        # agent_embed = agent_embed.unsqueeze(1).expand(-1, inputs.size(1), -1)  # [bs*n_agents, seq_len, embed_dim]
-
+        hidden_states = []
+        agent_embed = self.agent_id_embedding(self.agent_ids)
+        if not test_mode:
+            agent_embed = F.dropout(agent_embed, p=0.3) # shape: [bs * n_agents, embed_dim]
         
-        # agent_embed = F.dropout(agent_embed, p=0.3)
-        # agent_embed += torch.randn_like(agent_embed) * 0.05
+        agent_embed = agent_embed.unsqueeze(1).expand(-1, inputs.size(1), -1)  # [bs*n_agents, seq_len, embed_dim]
+        agent_embed += torch.randn_like(agent_embed) * 0.05
 # Expand embedding to match sequence length dimension
         
         # Concatenate along last dim
@@ -208,9 +208,11 @@ class TransformerAgent(nn.Module):
             faulty_flag = torch.zeros_like(self.agent_ids, dtype=torch.long, device=inputs.device)
 
         faulty_embed = self.faulty_embedding(faulty_flag)
+        if not test_mode:
+            faulty_embed = F.dropout(faulty_embed, p=0.3)
         faulty_embed = faulty_embed.unsqueeze(1).expand(-1, inputs.size(1), -1)
         x = torch.cat([inputs, faulty_embed], dim=-1)
-        #x = torch.cat([x, agent_embed], dim=-1)
+        x = torch.cat([x, agent_embed], dim=-1)
         # x = inputs
         # Process inputs
         x = F.relu(self.fc1(x))
