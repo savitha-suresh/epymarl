@@ -233,7 +233,7 @@ def run_sequential(args, logger):
             for _ in range(n_test_runs):
                 #runner.mac.agent.init_random_fault()
                 runner.mac.agent._faulty = False
-                perm = th.perm(
+                perm = th.randperm(
                     args.n_agents, 
                     device=args.device).unsqueeze(0).expand(args.batch_size, -1).reshape(-1)
                 runner.mac.agent.agent_ids = perm.clone()
@@ -278,7 +278,7 @@ def run_sequential(args, logger):
                 learner.mac.agent._faulty = False
                 learner.old_mac.agent._faulty = False
                 runner.mac.agent._faulty = False
-                perm = th.perm(
+                perm = th.randperm(
                     args.n_agents, 
                     device=args.device).unsqueeze(0).expand(args.batch_size, -1).reshape(-1)
                 learner.mac.agent.agent_ids = perm.clone()
