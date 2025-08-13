@@ -161,15 +161,14 @@ class TransformerAgent(nn.Module):
         self.output_norm = nn.LayerNorm(args.hidden_dim)
         self.fc2 = nn.Linear(args.hidden_dim, args.n_actions)
         self.memories = [None for _ in range(args.n_layers)]
+        self.agent_ids = torch.arange(self.args.n_agents, 
+                                      device=self.args.device).unsqueeze(0).expand(self.args.batch_size, -1).reshape(-1)
 
     def init_hidden(self):
         self.memories = [None for _ in range(self.n_layers)]
 
     def init_memory(self, batch_size):
         device = next(self.parameters()).device
-        self.agent_ids = torch.arange(self.args.n_agents, 
-                                      device=device).unsqueeze(0).expand(batch_size, -1).reshape(-1)
-
         return [torch.zeros(batch_size * self.args.n_agents, 0, self.args.hidden_dim, 
                             device=next(self.parameters()).device) for _ in self.layers]
 
