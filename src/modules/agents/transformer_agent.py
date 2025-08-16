@@ -190,11 +190,11 @@ class TransformerAgent(nn.Module):
         # inputs: (batch_size, seq_len, input_dim)
         hidden_states = []
         agent_embed = self.agent_id_embedding(self.agent_ids)
-        # if not test_mode:
-        #     agent_embed = F.dropout(agent_embed, p=0.3) # shape: [bs * n_agents, embed_dim]
+        if not test_mode:
+            agent_embed = F.dropout(agent_embed, p=0.3) # shape: [bs * n_agents, embed_dim]
         
         agent_embed = agent_embed.unsqueeze(1).expand(-1, inputs.size(1), -1)  # [bs*n_agents, seq_len, embed_dim]
-        # agent_embed += torch.randn_like(agent_embed) * 0.05
+        agent_embed += torch.randn_like(agent_embed) * 0.05
 # Expand embedding to match sequence length dimension
         
         
