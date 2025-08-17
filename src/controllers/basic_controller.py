@@ -30,7 +30,7 @@ class BasicMAC:
         mask = th.triu(th.ones(seq_len, total_len, device=device) * float('-inf'), diagonal=1)
         return mask 
     
-    def forward(self, ep_batch, t, test_mode=False, t_end=None):
+    def forward(self, ep_batch, t, test_mode=False, t_end=None, actions=None, return_aux_losses=False):
         agent_inputs = self._build_inputs(ep_batch, t, t_end=t_end)
         memory = self.memory
         avail_actions = ep_batch["avail_actions"]
@@ -41,7 +41,12 @@ class BasicMAC:
             mem_len=mem_len_now, device=agent_inputs.device)  # [1, mem_len + 1]
         mask = mask.unsqueeze(0).unsqueeze(1)  # [1, 1, seq_len, total_len]
         mask = mask.expand(ep_batch.batch_size * self.n_agents, self.args.n_heads, -1, -1)
-        agent_outs, hidden_states = self.agent(agent_inputs, memory=memory, attn_mask=mask)
+        if return_aux_losses:
+            agent_outs, hidden_states, losses = self.agent(agent_inputs, memory=memory, attn_mask=mask, actions=actions, 
+                                                       return_aux_losses=return_aux_losses)
+        else:
+            agent_outs, hidden_states = self.agent(agent_inputs, memory=memory, attn_mask=mask, actions=actions,
+                                                   return_aux_losses=return_aux_losses)
         self.memory = self.agent.update_memory(memory, hidden_states)
         if t_end is not None:
             avail_actions = avail_actions[:, t:t_end]
@@ -63,6 +68,8 @@ class BasicMAC:
             agent_outs_view = agent_outs.view(ep_batch.batch_size, T, self.n_agents, F)
         else:
             agent_outs_view = agent_outs.view(ep_batch.batch_size, self.n_agents, -1)
+        if return_aux_losses:
+            return agent_outs_view, losses
         return agent_outs_view
 
     def init_hidden(self, batch_size):

@@ -1,6 +1,7 @@
 from .rnn_agent import RNNAgent
 from .transformer_agent import TransformerAgent
 import random
+import torch
 
 class TransformerFaultyAgent(TransformerAgent):
     """
@@ -26,14 +27,39 @@ class TransformerFaultyAgent(TransformerAgent):
                                                       self.args.n_faulty_agents))
         self._faulty = False
 
-    def forward(self, inputs, memory=None, attn_mask=None):
+
+    def generate_agent_labels(self, batch_size):
+        agent_labels = torch.ones(batch_size, self.args.n_agents)
+        if hasattr(self, 'faulty_agent_indices'):
+            for idx in self.faulty_agent_indices:
+                agent_labels[:, idx] = 0
+        return agent_labels
+    
+    def build_cross_attn_mask(self):
+        # Create a mask that allows agents to attend to each other
+        # This is a square mask of size n_agents x n_agents
+        mask = torch.ones(self.args.n_agents, self.args.n_agents)
+        eye_mask = torch.eye(self.args.n_agents, device=self.args.device).unsqueeze(0)
+        eye_mask = eye_mask.expand(self.args.batch_size, -1, -1)
+        self_exclusion_mask = 1.0 - eye_mask
+        if self.faulty_agent_indices:
+            for idx in self.faulty_agent_indices:
+                mask[:, idx] = 0
+        mask =  mask.unsqueeze(0).expand(self.args.batch_size, -1, -1)
+        mask = mask * self_exclusion_mask
+        return mask
+
+    def forward(self, inputs, memory=None, attn_mask=None, actions=None, return_aux_losses=False):
         # Check if we should make agents faulty
         if self.faulty_agent_indices and not self._faulty and random.random() < self.args.fault_prob:
             self._faulty = True
             print(f"Agents {self.faulty_agent_indices} have become network faulty!")
             
         # Get regular Q-values/logits from parent class
-        q, h = super().forward(inputs, memory=memory, attn_mask=attn_mask)
+        if return_aux_losses:
+            q, h, aux_losses = super().forward(inputs, memory=memory, attn_mask=attn_mask, actions=actions, return_aux_losses=return_aux_losses)
+        else:
+            q, h = super().forward(inputs, memory=memory, attn_mask=attn_mask, actions=actions, return_aux_losses=return_aux_losses)
         if self.faulty_agent_indices and self._faulty:
             # For interleaved data, faulty agents appear every n_agents rows
             for faulty_idx in self.faulty_agent_indices:
@@ -56,5 +82,6 @@ class TransformerFaultyAgent(TransformerAgent):
                         q_index = faulty_idx + (self.args.n_agents*halt_idx)
                         q[q_index, :, 0] = 1e10
                         q[q_index, :, 1:] = -1e10
-
+        if return_aux_losses:
+            return q, h, aux_losses
         return q, h
