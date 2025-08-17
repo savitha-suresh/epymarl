@@ -38,7 +38,7 @@ class TransformerFaultyAgent(TransformerAgent):
     def build_cross_attn_mask(self):
         # Create a mask that allows agents to attend to each other
         # This is a square mask of size n_agents x n_agents
-        mask = torch.ones(self.args.n_agents, self.args.n_agents)
+        mask = torch.ones(self.args.n_agents, self.args.n_agents, device=self.args.device)
         eye_mask = torch.eye(self.args.n_agents, device=self.args.device).unsqueeze(0)
         eye_mask = eye_mask.expand(self.args.batch_size, -1, -1)
         self_exclusion_mask = 1.0 - eye_mask
