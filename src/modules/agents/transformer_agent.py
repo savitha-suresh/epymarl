@@ -404,7 +404,7 @@ class CrossAttentionBlock(nn.Module):
         # -------------------------------
         # Cross attention
         # -------------------------------
-        output = self.cross_attn(query=query_norm,
+        cross_out = self.cross_attn(query=query_norm,
                                     key=kv_norm,
                                     value=kv_norm,
                                     attn_mask=attn_mask)[0]
@@ -412,7 +412,7 @@ class CrossAttentionBlock(nn.Module):
         # -------------------------------
         # Residual connection with gating
         # -------------------------------
-        #output = self.gate(query, cross_out)
+        output = self.gate(query, cross_out)
         # reshape back to [B*A, Tq, d]
         output = output.view(batch_size * A, Tq, d_model)
         return output
