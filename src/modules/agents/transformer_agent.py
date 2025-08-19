@@ -355,66 +355,68 @@ class CrossAttentionBlock(nn.Module):
         
     def forward(self, query, key_value, cross_attn_mask=None):
         """
-        query: current agent representations (batch_size, seq_len, d_model)
-        key_value: all agents representations (batch_size * n_agents, seq_len, d_model)
-        cross_attn_mask: mask for which agents to attend to
+        query: current agent representations (batch_size * n_agents, seq_len, d_model)
+        key_value: all agents representations (batch_size * n_agents, kv_seq_len, d_model)
+        cross_attn_mask: [B, A, A] mask for which agents can attend to which
         """
-        batch_size_nagents, seq_len, d_model = query.shape
+        batch_size_nagents, Tq, d_model = query.shape
+        batch_size = batch_size_nagents // self.n_agents
+        _, Tk, _ = key_value.shape
+        A = self.n_agents
 
-        batch_size = batch_size_nagents//self.n_agents
+        # -------------------------------
+        # Interleave agent data (time-major ordering)
+        # -------------------------------
+        # query: [B*A, Tq, d] -> [B, A, Tq, d] -> [B, Tq, A, d] -> flatten [B, Tq*A, d]
+        query = query.view(batch_size, A, Tq, d_model).permute(0, 2, 1, 3).reshape(batch_size, Tq * A, d_model)
 
-        _, kv_seq_len, _ = key_value.shape
+        # key/value: [B*A, Tk, d] -> [B, A, Tk, d] -> [B, Tk, A, d] -> flatten [B, Tk*A, d]
+        kv_flat = key_value.view(batch_size, A, Tk, d_model).permute(0, 2, 1, 3).reshape(batch_size, Tk * A, d_model)
 
-        #print("Cross attn", "q", query.shape, "kv", key_value.shape)
-        # Reshape key_value for cross-attention
-        query = query.view(batch_size, self.n_agents, seq_len, d_model)
-        query = query.view(batch_size, self.n_agents * seq_len, d_model)
-        kv_reshaped = key_value.view(batch_size, self.n_agents, kv_seq_len, d_model)
-        kv_flat = kv_reshaped.view(batch_size, self.n_agents * kv_seq_len, d_model)
-          # Normalize key_value
-        # Apply cross-attention mask if provided
+        # Normalize
+        query_norm = self.norm1(query)
+        kv_norm = self.norm_kv(kv_flat)
+
+        # -------------------------------
+        # Build cross-attention mask (vectorized)
+        # -------------------------------
         if cross_attn_mask is not None:
-            B, A, _ = cross_attn_mask.shape
-            Tq = seq_len
-            Tk = kv_seq_len
+            # cross_attn_mask: [B, A, A] -> expand to token level
+            # For each timestep, only allow agent i to attend to allowed agents j
+            # Result: [B, Tq*A, Tk*A]
+            # B_idx = torch.arange(batch_size, device=query.device)[:, None, None]
+            # Tq_idx = torch.arange(Tq, device=query.device)[None, :, None]
+            # Tk_idx = torch.arange(Tk, device=query.device)[None, None, :]
 
-            # 1) Expand adjacency to token-level on key side:
-            #    [B, A, A, Tk]
-            expanded_k = cross_attn_mask.unsqueeze(-1).expand(B, A, A, Tk)
+            # Vectorized expansion using kron
+            # block_diag over timesteps: [Tq*A, Tk*A]
+            mask_block = torch.kron(torch.ones(Tq, Tk, device=query.device), cross_attn_mask[0])
+            attn_mask = mask_block.unsqueeze(0).expand(batch_size, -1, -1)
 
-            # 2) Flatten key side to A * Tk: -> [B, A, A*Tk]
-            expanded_k = expanded_k.reshape(B, A, A * Tk)
+            # Add heads dimension
+            attn_mask = attn_mask.unsqueeze(1).expand(batch_size, self.n_heads, -1, -1)
 
-            # 3) Repeat for each query token per agent:
-            #    first add query token dim -> [B, A, Tq, A*Tk]
-            expanded_k = expanded_k.unsqueeze(2).expand(B, A, Tq, A * Tk)
-
-            # 4) Collapse batch-agent-query into the attention query axis:
-            #    -> [B, A*Tq, A*Tk]
-            attn_per_batch = expanded_k.reshape(B, A * Tq, A * Tk)
-
-            # 5) Finally add head dimension so it matches attention score dims:
-            #    -> [B, 1, A*Tq, A*Tk] then expand heads -> [B, H, A*Tq, A*Tk]
-            attn_mask = attn_per_batch.unsqueeze(1).expand(B, self.n_heads, A * Tq, A * Tk)
-
-            # 6) Convert to additive mask (large negative): 1=allow, 0=block -> 0/-inf
-            #    Make dtype match attention_score (float) and device.
-            attn_mask = (1.0 - attn_mask).to(query.dtype) * (-1e9)   # blocked positions get -1e9
+            # Convert to additive mask (1=allow, 0=block -> 0/-inf)
+            attn_mask = (1.0 - attn_mask).to(query.dtype) * (-1e9)
         else:
             attn_mask = None
+
+        # -------------------------------
         # Cross attention
-        cross_out  = self.cross_attn(
-            query=self.norm1(query),
-            key=self.norm_kv(kv_flat),
-            value=self.norm_kv(kv_flat),
-            attn_mask=attn_mask
-        )[0]
-        
+        # -------------------------------
+        output = self.cross_attn(query=query_norm,
+                                    key=kv_norm,
+                                    value=kv_norm,
+                                    attn_mask=attn_mask)[0]
+
+        # -------------------------------
         # Residual connection with gating
-        output = self.gate(query, cross_out)
-        output = output.view(batch_size_nagents, seq_len, self.d_model)
-        
+        # -------------------------------
+        #output = self.gate(query, cross_out)
+        # reshape back to [B*A, Tq, d]
+        output = output.view(batch_size * A, Tq, d_model)
         return output
+    
 
 class EnhancedDecoderBlock(nn.Module):
     def __init__(self, d_model, nhead, norm_first, max_seq_len, n_agents):
