@@ -411,8 +411,8 @@ class CrossAttentionBlock(nn.Module):
         )[0]
         
         # Residual connection with gating
-        output = self.gate(query, cross_out)
-        output = output.view(batch_size_nagents, seq_len, self.d_model)
+        #output = self.gate(query, cross_out)
+        output = cross_out.view(batch_size_nagents, seq_len, self.d_model)
         
         return output
 
