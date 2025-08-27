@@ -81,8 +81,8 @@ class PPOLearner:
             # reshape rewards to be of shape (batch_size, episode_length, n_agents)
             rewards = rewards.expand(-1, -1, self.n_agents)
 
-        rewards = self.stuck_penalty.shape_rewards(rewards, positions)
-        rewards = self.osc_penalty.shape_rewards(rewards, positions)
+        #rewards = self.stuck_penalty.shape_rewards(rewards, positions)
+        #rewards = self.osc_penalty.shape_rewards(rewards, positions)
         mask = mask.repeat(1, 1, self.n_agents)
         #mask = mask * active_agents
         critic_mask = mask.clone()
