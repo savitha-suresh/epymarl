@@ -29,7 +29,7 @@ class TransformerFaultyAgent(TransformerAgent):
 
 
     def generate_agent_labels(self, batch_size):
-        agent_labels = torch.ones(batch_size, self.args.n_agents)
+        agent_labels = torch.ones(batch_size, self.args.n_agents, device=self.args.device)
         if hasattr(self, 'faulty_agent_indices'):
             for idx in self.faulty_agent_indices:
                 agent_labels[:, idx] = 0
