@@ -1,5 +1,6 @@
 from .rnn_agent import RNNAgent
 import random
+import torch as th
 
 class FaultyAgent(RNNAgent):
     """
@@ -21,11 +22,19 @@ class FaultyAgent(RNNAgent):
         self.no_op_action = 0
     
     def init_random_fault(self):
-        # self.faulty_agent_indices = set(random.sample(range(self.args.n_agents), 
-        #                                               self.args.n_faulty_agents))
-        self.faulty_agent_indices = {1}
+        self.faulty_agent_indices = set(random.sample(range(self.args.n_agents), 
+                                                      self.args.n_faulty_agents))
+        #self.faulty_agent_indices = {1}
         self._faulty = False
+    
 
+    def generate_agent_labels(self, batch_size):
+        agent_labels = th.ones(batch_size, self.args.n_agents)
+        if hasattr(self, 'faulty_agent_indices'):
+            for idx in self.faulty_agent_indices:
+                agent_labels[:, idx] = 0
+        return agent_labels
+    
     def forward(self, inputs, hidden_state):
         # Check if we should make agents faulty
         if self.faulty_agent_indices and not self._faulty and random.random() < self.args.fault_prob:
@@ -33,7 +42,7 @@ class FaultyAgent(RNNAgent):
             print(f"Agents {self.faulty_agent_indices} have become network faulty!")
             
         # Get regular Q-values/logits from parent class
-        q, h = super().forward(inputs, hidden_state)
+        q, h, aux_loss = super().forward(inputs, hidden_state)
         
         if self.faulty_agent_indices and self._faulty:
             # For interleaved data, faulty agents appear every n_agents rows
@@ -58,4 +67,4 @@ class FaultyAgent(RNNAgent):
                         q[q_index, 0] = 1e10
                         q[q_index, 1:] = -1e10
 
-        return q, h
+        return q, h, aux_loss

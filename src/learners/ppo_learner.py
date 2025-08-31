@@ -89,7 +89,7 @@ class PPOLearner:
         old_mac_out = []
         self.old_mac.init_hidden(batch.batch_size)
         for t in range(batch.max_seq_length - 1):
-            agent_outs = self.old_mac.forward(batch, t=t)
+            agent_outs, _ = self.old_mac.forward(batch, t=t)
             old_mac_out.append(agent_outs)
         old_mac_out = th.stack(old_mac_out, dim=1)  # Concat over time
         old_pi = old_mac_out
@@ -100,13 +100,15 @@ class PPOLearner:
         
         for k in range(self.args.epochs):
             mac_out = []
+            aux_losses = []
             self.mac.init_hidden(batch.batch_size)
             for t in range(batch.max_seq_length - 1):
-                agent_outs = self.mac.forward(batch, t=t)
+                agent_outs, aux_loss = self.mac.forward(batch, t=t)
                 mac_out.append(agent_outs)
+                aux_losses.append(aux_loss)
             mac_out = th.stack(mac_out, dim=1)  # Concat over time
-
             pi = mac_out
+            aux_loss = th.stack(aux_losses).mean()
             advantages, critic_train_stats = self.train_critic_sequential(
                 self.critic, self.target_critic, batch, rewards, critic_mask, actions
             )
@@ -135,10 +137,14 @@ class PPOLearner:
             )
             # Epsilon random exploration. 
             # 
+            
+            total_loss = pg_loss + 0.05 * aux_loss
+            
+           
 
             # Optimise agents
             self.agent_optimiser.zero_grad()
-            pg_loss.backward()
+            total_loss.backward()
             grad_norm = th.nn.utils.clip_grad_norm_(
                 self.agent_params, self.args.grad_norm_clip
             )
