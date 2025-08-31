@@ -138,199 +138,60 @@ class GRUGate(nn.Module):
         h = self.tanh(self.Wg(y) + self.Ug(torch.mul(r, x)))
         return torch.mul(1 - z, x) + torch.mul(z, h)
     
-
-
-class BehaviorEmbedding(nn.Module):
-    """
-    Learns behavior embeddings for each agent to identify similar behaviors
-    and filter out faulty (no-op) agents
-    """
-    def __init__(self, obs_dim, behavior_dim, n_agents, threshold=0.7):
-        super(BehaviorEmbedding, self).__init__()
-        self.behavior_dim = behavior_dim
+class ClusterSimilarityNet(nn.Module):
+    def __init__(self, obs_dim, embed_dim, n_agents, threshold=0.7):
+        super().__init__()
         self.n_agents = n_agents
         self.threshold = threshold
-        
-        # Network to encode observations into behavior embeddings
-        self.behavior_encoder = nn.Sequential(
-            nn.Linear(obs_dim, behavior_dim * 2),
+        self.encoder = nn.Sequential(
+            nn.Linear(obs_dim, embed_dim),
             nn.ReLU(),
-            nn.Linear(behavior_dim * 2, behavior_dim),
-            nn.LayerNorm(behavior_dim)
+            nn.Linear(embed_dim, embed_dim),
         )
-        
-        # Activity classifier to detect no-op agents
-        self.activity_classifier = nn.Sequential(
-            nn.Linear(obs_dim, 32),
-            nn.ReLU(),
-            nn.Linear(32, 2),  # [no-op, active]
-            nn.Softmax(dim=-1)
-        )
-        
-    def forward(self, obs):
-        # obs: (batch_size * n_agents, seq_len, obs_dim)
-        batch_size_agents, seq_len, obs_dim = obs.shape
+
+    def forward(self, obs, labels=None):
+        obs = obs.squeeze(1)
+        batch_size_agents, obs_dim = obs.shape
         batch_size = batch_size_agents // self.n_agents
-        
-        # Get behavior embeddings
-        behavior_emb = self.behavior_encoder(obs)  # (batch_size * n_agents, seq_len, behavior_dim)
-        
-        # Get activity predictions
-        activity_scores = self.activity_classifier(obs)  # (batch_size * n_agents, seq_len, 2)
-        activity_prob = activity_scores[:, :, 1]  # Probability of being active
-        
-        # Reshape for agent-wise operations
-        behavior_emb = behavior_emb.view(batch_size, self.n_agents, seq_len, -1)
-        activity_prob = activity_prob.view(batch_size, self.n_agents, seq_len)
-        
-        return behavior_emb, activity_prob
+
+        # Encode → embeddings
+        emb = self.encoder(obs)                           # (batch*n_agents, embed_dim)
+        emb = F.normalize(emb, p=2, dim=-1)               # cosine normalize
+        emb = emb.view(batch_size, self.n_agents, -1)
+
+        # Similarity matrix
+        sim_matrix = torch.matmul(emb, emb.transpose(1, 2))  # (batch, n_agents, n_agents)
+        eye = torch.eye(self.n_agents, device=obs.device).unsqueeze(0)
+        sim_matrix = sim_matrix * (1.0 - eye)
+
+        # Cluster-based mask
+        attn_mask = (sim_matrix > self.threshold).float()
+
+        # Loss (if labels given)
+        aux_loss = None
+        if labels is not None:
+            aux_loss = self.cluster_loss(sim_matrix, labels)
+
+        return emb, attn_mask, aux_loss
     
-    def compute_behavior_losses(self, behavior_emb, activity_prob, agent_labels=None, actions=None):
-        """
-        Compute losses to encourage behavioral diversity and clear separation
+    def cluster_loss(self, sim_matrix, labels, margin=0.5):
+        batch_size, n_agents, _ = sim_matrix.shape
         
-        Args:
-            behavior_emb: (batch_size, n_agents, seq_len, behavior_dim)
-            activity_prob: (batch_size, n_agents, seq_len)
-            agent_labels: Optional ground truth labels (0=faulty, 1=healthy) - for debugging only
-            actions: Agent actions to infer activity from (batch_size, n_agents, seq_len)
-        """
-        batch_size, n_agents, seq_len, behavior_dim = behavior_emb.shape
+        # Pairwise ground truth: 1 if same label, 0 if different
+        label_sim = (labels.unsqueeze(1) == labels.unsqueeze(2)).float()
+        eye = torch.eye(n_agents, device=labels.device).unsqueeze(0)
+        label_sim = label_sim * (1.0 - eye)  # no self-pairs
         
-        # Average behavior embedding over sequence
-        avg_behavior = behavior_emb.mean(dim=2)  # (batch_size, n_agents, behavior_dim)
-        avg_activity = activity_prob.mean(dim=2)  # (batch_size, n_agents)
+        # Loss for similar pairs (same label) → want sim close to 1
+        pos_loss = (1 - sim_matrix) * label_sim
         
-        losses = {}
+        # Loss for dissimilar pairs (different label) → want sim below margin
+        neg_loss = F.relu(sim_matrix - margin) * (1.0 - label_sim)
         
-        # 1. Anti-Collapse Loss: Prevent all healthy agents from becoming identical
-        # BUT allow role specialization by only penalizing EXACT similarity (> 0.95)
-        norm_behavior = F.normalize(avg_behavior, p=2, dim=-1)
-        similarity_matrix = torch.bmm(norm_behavior, norm_behavior.transpose(1, 2))
-        
-        # Create mask to exclude self-similarity and focus on active agents
-        eye_mask = torch.eye(n_agents, device=similarity_matrix.device).unsqueeze(0)
-        eye_mask = eye_mask.expand(batch_size, -1, -1)
-        
-        # Use predicted activity as proxy for healthy agents (self-supervised)
-        healthy_mask = (avg_activity > self.threshold).float()
-        healthy_pair_mask = healthy_mask.unsqueeze(1) * healthy_mask.unsqueeze(2)
-        valid_mask = healthy_pair_mask * (1.0 - eye_mask)
-        
-        # Anti-collapse loss: only penalize VERY high similarity (near identical agents)
-        collapse_threshold = 0.95  # Only penalize if similarity > 0.95
-        collapse_mask = (similarity_matrix > collapse_threshold).float()
-        anti_collapse_loss = (similarity_matrix * collapse_mask * valid_mask).sum() / (valid_mask.sum() + 1e-8)
-        losses['anti_collapse'] = anti_collapse_loss
-        
-        # 2. Self-Supervised Separation: Use action patterns to infer agent types
-        if actions is not None:
-            # Detect no-op agents based on action patterns
-            # Assuming action 0 is no-op or you have a specific no-op action
-            
-            action_variance = torch.var(actions.float(), dim=2)  # Variance across time
-            #print("action shape", actions.shape, "variance.shape", action_variance.shape)
-            action_activity = action_variance.mean(dim=0)  # Average across action dims if multi-dim
-            
-            # Create pseudo-labels based on action patterns
-            inferred_faulty = (action_activity < 0.1).float()  # Low variance = likely faulty
-            inferred_healthy = 1.0 - inferred_faulty
-            
-            # Separation loss based on inferred labels
-            healthy_behavior = avg_behavior * inferred_healthy.unsqueeze(-1)
-            faulty_behavior = avg_behavior * inferred_faulty.unsqueeze(-1)
-            
-            healthy_count = inferred_healthy.sum(dim=0, keepdim=True)
-            faulty_count = inferred_faulty.sum(dim=0, keepdim=True)
-            
-            # Only compute if we have both types
-            mask = (healthy_count > 0) & (faulty_count > 0)
-            
-            if mask.any():
-                healthy_centroid = healthy_behavior.sum(dim=0) / (healthy_count.unsqueeze(-1) + 1e-8)
-                faulty_centroid = faulty_behavior.sum(dim=0) / (faulty_count.unsqueeze(-1) + 1e-8)
-                
-                centroid_similarity = F.cosine_similarity(healthy_centroid, faulty_centroid, dim=-1)
-                separation_loss = (centroid_similarity * mask.squeeze(-1)).mean()
-                losses['separation'] = separation_loss
-            else:
-                losses['separation'] = torch.tensor(0.0, device=behavior_emb.device)
-        
-        # 3. Activity Prediction Loss: Learn to predict activity from behavior
-        if actions is not None:
-            # Ground truth activity based on action variance
-            action_variance = torch.var(actions.float(), dim=2)  # (batch_size, n_agents)
-            gt_activity = (action_variance > 0.1).float()  # Binary active/inactive
-            
-            # Loss for activity classifier
-            activity_pred_loss = F.binary_cross_entropy(avg_activity, gt_activity)
-            losses['activity_prediction'] = activity_pred_loss
-        
-        # 4. Supervised losses (only if ground truth labels provided - for debugging)
-        if agent_labels is not None:
-            # Supervised separation loss
-            healthy_behavior_gt = avg_behavior * agent_labels.unsqueeze(-1)
-            faulty_behavior_gt = avg_behavior * (1 - agent_labels).unsqueeze(-1)
-            
-            healthy_count_gt = agent_labels.sum(dim=1, keepdim=True)
-            faulty_count_gt = (1 - agent_labels).sum(dim=1, keepdim=True)
-            
-            if (healthy_count_gt > 0).all() and (faulty_count_gt > 0).all():
-                healthy_centroid_gt = healthy_behavior_gt.sum(dim=1) / (healthy_count_gt.unsqueeze(-1) + 1e-8)
-                faulty_centroid_gt = faulty_behavior_gt.sum(dim=1) / (faulty_count_gt.unsqueeze(-1) + 1e-8)
-                
-                supervised_separation = F.cosine_similarity(healthy_centroid_gt, faulty_centroid_gt, dim=-1).mean()
-                losses['supervised_separation'] = supervised_separation
-            
-            # Supervised activity loss
-            gt_activity_labels = agent_labels.float()
-            supervised_activity_loss = F.binary_cross_entropy(avg_activity, gt_activity_labels)
-            losses['supervised_activity'] = supervised_activity_loss
-        
-        return losses
-    
-    def compute_similarity_mask(self, behavior_emb, activity_prob):
-        """
-        Compute similarity mask between agents based on behavior embeddings
-        and filter out inactive (no-op) agents
-        """
-        batch_size, n_agents, seq_len, behavior_dim = behavior_emb.shape
-        #print("Computing similarity mask with behavior_emb shape:", behavior_emb.shape,
-        #      "activity_prob shape:", activity_prob.shape)
-        # Average behavior embedding over sequence for each agent
-        avg_behavior = behavior_emb.mean(dim=2)  # (batch_size, n_agents, behavior_dim)
-        avg_activity = activity_prob.mean(dim=2)  # (batch_size, n_agents)
-        
-        # Compute cosine similarity between all agent pairs
-        norm_behavior = F.normalize(avg_behavior, p=2, dim=-1)
-        similarity_matrix = torch.bmm(norm_behavior, norm_behavior.transpose(1, 2))
-        # (batch_size, n_agents, n_agents)
-        
-        # Create self-exclusion mask (diagonal = 0, agent can't attend to itself)
-        eye_mask = torch.eye(n_agents, device=similarity_matrix.device).unsqueeze(0)
-        eye_mask = eye_mask.expand(batch_size, -1, -1)
-        self_exclusion_mask = 1.0 - eye_mask  # 0 on diagonal, 1 elsewhere
-        
-        # Create activity mask - only attend to active agents
-        # activity_mask = (avg_activity > self.threshold).float()  # (batch_size, n_agents)
-        # # For cross-attention: row agent attends to column agents
-        # # So we only care if the TARGET agent (column) is active
-        # activity_cross_mask = activity_mask.unsqueeze(1).expand(-1, n_agents, -1)
-        # (batch_size, n_agents, n_agents) where activity_cross_mask[b, i, j] = activity of agent j
-        
-        # Combine similarity, activity, and self-exclusion masks
-        similarity_threshold = 0.5  # Adjust based on your needs
-        similarity_mask = (similarity_matrix > similarity_threshold).float()
-        
-        # Final mask: can attend to agent j if:
-        # 1. Agent j is active (activity_cross_mask)
-        # 2. Agent i and j are similar (similarity_mask) 
-        # 3. Agent i != j (self_exclusion_mask)
-        
-        #final_mask = similarity_mask * activity_cross_mask * self_exclusion_mask
-        final_mask = similarity_mask * self_exclusion_mask
-        
-        return final_mask, similarity_matrix
+        # Average
+        loss = (pos_loss.sum() + neg_loss.sum()) / (label_sim.sum() + (1.0 - label_sim).sum() + 1e-8)
+        return loss
+
 
 class CrossAttentionBlock(nn.Module):
     """
@@ -487,9 +348,9 @@ class TransformerAgent(nn.Module):
         self.n_layers = args.n_layers
         
         # Behavior embedding module
-        self.behavior_embedding = BehaviorEmbedding(
-            obs_dim=input_shape,
-            behavior_dim=args.hidden_dim // 4,
+        self.similarity_net = ClusterSimilarityNet(
+            input_shape,
+            args.hidden_dim // 4,
             n_agents=args.n_agents,
             threshold=0.7
         )
@@ -505,7 +366,7 @@ class TransformerAgent(nn.Module):
             ) for _ in range(args.n_layers)
         ])
         
-        self.mem_len = 100
+        self.mem_len = 250
         self.output_norm = nn.LayerNorm(args.hidden_dim)
         self.fc2 = nn.Linear(args.hidden_dim, args.n_actions)
         self.memories = [None for _ in range(args.n_layers)]
@@ -539,26 +400,10 @@ class TransformerAgent(nn.Module):
         batch_size_agents, seq_len, input_dim = inputs.shape
         batch_size = batch_size_agents // self.args.n_agents
         hidden_states = []
-        aux_losses = {}
-        # Get behavior embeddings and activity predictions
-        # behavior_emb, activity_prob = self.behavior_embedding(inputs)
-        # cross_attn_mask, similarity_matrix = self.behavior_embedding.compute_similarity_mask(
-        #     behavior_emb, activity_prob
-        # )
-        # print("cross attention mask", cross_attn_mask[0], "similarity matrix", similarity_matrix[0])  
-        # agent_labels = self.generate_agent_labels(self.args.batch_size)
-        # # Compute auxiliary losses for behavior learning
-        # aux_losses = {}
-        # if return_aux_losses:
-        #     # Reshape actions if provided
-        #     actions_reshaped = None
-        #     if actions is not None:
-        #         actions_reshaped = actions.view(batch_size, self.args.n_agents, -1)
-            
-        #     aux_losses = self.behavior_embedding.compute_behavior_losses(
-        #         behavior_emb, activity_prob, agent_labels, actions_reshaped
-        #     )
-        cross_attn_mask = self.build_cross_attn_mask()
+        agent_labels = self.generate_agent_labels(self.args.batch_size)
+        emb, cross_attn_mask, aux_loss = self.similarity_net(inputs, agent_labels)
+        
+        # cross_attn_mask = self.build_cross_attn_mask()
         #print("Cross_attention mask shape:", cross_attn_mask)
         # Process inputs
         x = F.relu(self.fc1(inputs))
@@ -570,12 +415,7 @@ class TransformerAgent(nn.Module):
         for i, layer in enumerate(self.layers):
             mem = None if memory is None else memory[i]
             
-            # Reshape cross_attn_mask for current agent
-            # agent_idx = torch.arange(batch_size_agents) % self.args.n_agents
-            # current_cross_mask = None
-            # if cross_attn_mask is not None:
-            #     batch_indices = torch.arange(batch_size_agents) // self.args.n_agents
-            #     current_cross_mask = cross_attn_mask[batch_indices, agent_idx]
+           
             
             x = layer(
                 x=x,
@@ -592,7 +432,7 @@ class TransformerAgent(nn.Module):
         q = self.fc2(x)
         
         if return_aux_losses:
-            return q, hidden_states, aux_losses
+            return q, hidden_states, aux_loss
         return q, hidden_states
     
 # class TransformerAgent(nn.Module):
