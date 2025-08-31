@@ -273,9 +273,9 @@ class CrossAttentionBlock(nn.Module):
         # -------------------------------
         # Residual connection with gating
         # -------------------------------
-        output = self.gate(query, cross_out)
+        #output = self.gate(query, cross_out)
         # reshape back to [B*A, Tq, d]
-        output = output.view(batch_size * A, Tq, d_model)
+        output = cross_out.view(batch_size * A, Tq, d_model)
         return output
     
 
