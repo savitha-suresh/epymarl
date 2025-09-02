@@ -462,7 +462,7 @@ class EnhancedDecoderBlock(nn.Module):
         # Cross attention with other agents
         
         cross_attn_op = self.cross_attn_block(
-            query=x,
+            query=self.norm1(x),
             key_value=self.norm_kv(x_cat),
             cross_attn_mask=cross_attn_mask
         )
