@@ -23,8 +23,8 @@ class TransformerFaultyAgent(TransformerAgent):
         self.no_op_action = 0
     
     def init_random_fault(self):
-        self.faulty_agent_indices = set(random.sample(range(self.args.n_agents), 
-                                                      self.args.n_faulty_agents))
+        self.faulty_agent_indices = {0}#set(random.sample(range(self.args.n_agents), 
+                                    #                  self.args.n_faulty_agents))
         self._faulty = False
 
 
