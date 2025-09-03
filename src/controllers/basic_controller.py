@@ -168,9 +168,9 @@ class BasicMAC:
         if t_end is None:
             bs = batch.batch_size
             obs_t = batch["obs"][:, t]
-            #obs_faulty = self.get_new_obs_with_faults(obs_t, bs)
+            obs_faulty = self.get_new_obs_with_faults(obs_t, bs)
             inputs = []
-            inputs.append(obs_t)  # b1av
+            inputs.append(obs_faulty)  # b1av
             if self.args.obs_last_action:
                 if t == 0:
                     inputs.append(th.zeros_like(batch["actions_onehot"][:, t]))
@@ -189,9 +189,9 @@ class BasicMAC:
             t_start = t
             for t_step in range(t_start, t_end):
                 obs_t = batch["obs"][:, t_step]
-                #obs_faulty = self.get_new_obs_with_faults(obs_t, bs)
+                obs_faulty = self.get_new_obs_with_faults(obs_t, bs)
                 inputs = []
-                inputs.append(obs_t)
+                inputs.append(obs_faulty)
                 if self.args.obs_last_action:
                     if t_step == 0:
                         inputs.append(th.zeros_like(batch["actions_onehot"][:, t_step]))
