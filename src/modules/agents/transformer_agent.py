@@ -180,7 +180,7 @@ class ClusterSimilarityNet(nn.Module):
         # Pairwise ground truth: 1 if same label, 0 if different
         label_sim = (labels.unsqueeze(1) == labels.unsqueeze(2)).float()
         eye = torch.eye(n_agents, device=labels.device).unsqueeze(0)
-        label_sim = label_sim * (1.0 - eye)  # no self-pairs
+        #label_sim = label_sim * (1.0 - eye)  # no self-pairs
         
         # Loss for similar pairs (same label) → want sim close to 1
         pos_loss = (1 - sim_matrix) * label_sim
