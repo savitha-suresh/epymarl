@@ -161,8 +161,8 @@ class ClusterSimilarityNet(nn.Module):
 
         # Similarity matrix
         sim_matrix = torch.matmul(emb, emb.transpose(1, 2))  # (batch, n_agents, n_agents)
-        eye = torch.eye(self.n_agents, device=obs.device).unsqueeze(0)
-        sim_matrix = sim_matrix * (1.0 - eye)
+        #eye = torch.eye(self.n_agents, device=obs.device).unsqueeze(0)
+        #sim_matrix = sim_matrix * (1.0 - eye)
 
         # Cluster-based mask
         attn_mask = (sim_matrix > self.threshold).float()
@@ -314,20 +314,20 @@ class EnhancedDecoderBlock(nn.Module):
         else:
             x_cat = x
             
-        self_attn_op = self.self_attn(
-            self.norm1(x), self.norm_kv(x_cat), self.norm_kv(x_cat),
-            attn_mask=attn_mask
-        )[0]
-        h1 = self.gate1(x, self_attn_op)
+        # self_attn_op = self.self_attn(
+        #     self.norm1(x), self.norm_kv(x_cat), self.norm_kv(x_cat),
+        #     attn_mask=attn_mask
+        # )[0]
+        # h1 = self.gate1(x, self_attn_op)
         
         # Cross attention with other agents
         
         cross_attn_op = self.cross_attn_block(
-            query=h1,
-            key_value=x_cat,
+            query=self.norm1(x),
+            key_value=self.norm_kv(x_cat),
             cross_attn_mask=cross_attn_mask
         )
-        h2 = self.gate2(h1, cross_attn_op)
+        h2 = self.gate2(x, cross_attn_op)
         
         
         # Feed forward
