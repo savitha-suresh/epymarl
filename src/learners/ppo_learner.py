@@ -19,8 +19,8 @@ class PPOLearner:
         self.logger = logger
         self.stuck_penalty = StuckPenaltyRewardShaper(
             max_lookback=20,
-            base_penalty=0.05,  # Adjust based on reward scale
-            penalty_growth_rate=1.1
+            base_penalty=0.005,  # Adjust based on reward scale
+            penalty_growth_rate=1.3
         )
         self.osc_penalty = OscillationPenaltyRewardShaper(
             lookback=20,
