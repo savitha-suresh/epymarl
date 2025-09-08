@@ -402,8 +402,6 @@ class TransformerAgent(nn.Module):
         hidden_states = []
         agent_labels = self.generate_agent_labels(self.args.batch_size)
         emb, cross_attn_mask, aux_loss = self.similarity_net(inputs, agent_labels)
-        for idx in self.faulty_agent_indices:
-            cross_attn_mask[:, idx, idx] = 0
         # cross_attn_mask = self.build_cross_attn_mask()
         #print("Cross_attention mask shape:", cross_attn_mask)
         # Process inputs
