@@ -30,8 +30,8 @@ def filter_agents(data):
                 # Filter agents whose id is not 0 or 1 and 2nd index (index 1) is 1
                 # if agent_id not in [failed_agents]
                 #if agent_id not in [0, 1] and values[2] == 1.0:
-                if values[2] == 1.0: 
-                    filtered_agents[agent_id] = values
+                # if values[2] == 1.0: 
+                filtered_agents[agent_id] = values
         
         if filtered_agents:
             # Create a copy of the original env_data to avoid modifying it

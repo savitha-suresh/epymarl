@@ -43,9 +43,11 @@ def analyze_agent_positions(input_dir):
         for env_data in data:
             # Get the step number
             step = env_data['step']
+            n_agents = len(env_data['agents'])
+            pos_idx = -n_agents*3 # position starts from the end
             for agent_id, obs in env_data['agents'].items():
                 # store step and the position of the agent
-                agent_tracking[agent_id].append((step, (obs[0], obs[1])))
+                agent_tracking[agent_id].append((step, (obs[-pos_idx], obs[-pos_idx+1])))
                 
     return agent_tracking
 
@@ -83,7 +85,7 @@ def display_stuck_agents(agent_tracking):
     #print(results)
     print(results.keys())
     for agent_id in results:
-        print(f"Agent id {agent_id} {len(results[agent_id])}")
+        print(f"Agent id {agent_id} {sum(results[agent_id])//4}")
 
 def main():
     input_dir = 'filtered_json'  # Directory containing the filtered JSON files

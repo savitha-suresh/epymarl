@@ -141,8 +141,9 @@ class ParallelRunner:
     def display_info(self, reward, obs, env_idx):
         sent = []
         for agent_no, agent_obs in enumerate(obs):
-            if any(int(agent_obs[ind])==int(1) for ind in [8, 15, 22, 29, 43, 50, 57, 64]):
-                sent.append(
+            # if any(int(agent_obs[ind])==int(1) for ind in [8, 15, 22, 29, 43, 50, 57, 64]):
+            #     
+            sent.append(
                 f"Agent {agent_no}: {agent_obs}")
         if sent:
             obs = "\n".join(sent)
