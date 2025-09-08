@@ -59,8 +59,8 @@ class PPOLearner:
         self.old_mac.agent.train()
         self.mac.agent.train()
         rewards = batch["reward"][:, :-1]
-        
-        positions = batch["obs"][:, :, :, 0:2]
+        pos_index = self.args.n_agents * 3 
+        positions = batch["obs"][:, :, :, -pos_index:-pos_index+2]
         
         actions = batch["actions"][:, :]
         terminated = batch["terminated"][:, :-1].float()
@@ -82,7 +82,7 @@ class PPOLearner:
             # reshape rewards to be of shape (batch_size, episode_length, n_agents)
             rewards = rewards.expand(-1, -1, self.n_agents)
 
-        #rewards = self.stuck_penalty.shape_rewards(rewards, positions)
+        rewards = self.stuck_penalty.shape_rewards(rewards, positions)
         #rewards = self.osc_penalty.shape_rewards(rewards, positions)
         mask = mask.repeat(1, 1, self.n_agents)
         #mask = mask * active_agents

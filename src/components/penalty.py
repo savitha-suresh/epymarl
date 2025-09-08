@@ -29,8 +29,8 @@ class StuckPenaltyRewardShaper:
             penalties: Tensor of shape [batch_size, seq_length, 1] with penalty values aggregated across agents
         """
         # Limit to first 500 timesteps if needed
-        if positions.size(1) > 500:
-            positions = positions[:, :500, :, :]
+        if positions.size(1) > 50:
+            positions = positions[:, :50, :, :]
             
         batch_size, seq_length, n_agents, pos_dim = positions.shape
         device = positions.device
