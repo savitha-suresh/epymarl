@@ -43,10 +43,10 @@ class BasicMAC:
         mask = mask.expand(ep_batch.batch_size * self.n_agents, self.args.n_heads, -1, -1)
         if return_aux_losses:
             agent_outs, hidden_states, losses = self.agent(agent_inputs, memory=memory, attn_mask=mask, actions=actions, 
-                                                       return_aux_losses=return_aux_losses)
+                                                       return_aux_losses=return_aux_losses, timestep=t)
         else:
             agent_outs, hidden_states = self.agent(agent_inputs, memory=memory, attn_mask=mask, actions=actions,
-                                                   return_aux_losses=return_aux_losses)
+                                                   return_aux_losses=return_aux_losses, timestep=t)
         self.memory = self.agent.update_memory(memory, hidden_states)
         if t_end is not None:
             avail_actions = avail_actions[:, t:t_end]
