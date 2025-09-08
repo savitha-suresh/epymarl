@@ -74,6 +74,7 @@ def process_file(file_path, output_dir, chunk_size=100):
                 current_agent_values = []
                 for val in values_str.split():
                     if val.strip():  # Skip empty strings
+                        val = val.strip().rstrip(']')
                         current_agent_values.append(float(val.rstrip('.')))
                 
                 current_agent_id = agent_id
