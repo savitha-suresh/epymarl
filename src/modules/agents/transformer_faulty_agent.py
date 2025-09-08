@@ -59,32 +59,74 @@ class TransformerFaultyAgent(TransformerAgent):
         self.timestep = 0
         self.fault_schedule = self.generate_fault_schedule()
         #print(f"Faulty timesteps: {len(self.fault_schedule)}")
-        
 
-    
     def generate_fault_schedule(self):
         """Generate blocks of faulty behavior based on fault percentage"""
-        faulty_timesteps = set()
-        #if random.random() < self.args.fault_prob:
-        faulty_timesteps.update(range(10, 60))
+        if not hasattr(self.args, 'total_timesteps'):
+            total_timesteps = getattr(self.args, 'total_timesteps', 1000)
+        else:
+            total_timesteps = self.args.total_timesteps
+            
+        fault_percentage = getattr(self.args, 'fault_percentage', 20)  # Default 20%
+        num_faulty_steps = int(total_timesteps * fault_percentage / 100)
         
-        faulty_timesteps.update(range(80,120))
-        faulty_timesteps.update(range(200,300))
-        faulty_timesteps.update(range(350,420))
+        # Block parameters
+        min_block_size = getattr(self.args, 'min_fault_block', 5)
+        # Calculate max_block_size based on fault percentage
+        # For higher fault percentages, allow larger blocks
+        # Rule: max block shouldn't exceed fault_percentage/2 of total steps
+        calculated_max = max(min_block_size, int(total_timesteps * fault_percentage / 200))
+        max_block_size = calculated_max
+        
+        faulty_timesteps = set()
+        remaining_faulty_steps = num_faulty_steps
+        
+        while remaining_faulty_steps > 0:
+            # Random block size, but don't exceed remaining steps
+            block_size = min(random.randint(min_block_size, max_block_size), remaining_faulty_steps)
+            
+            # Random start position, ensuring block fits
+            max_start = total_timesteps - block_size
+            if max_start < 0:
+                break
+                
+            start_pos = random.randint(0, max_start)
+            
+            # Check for overlap with existing faulty blocks
+            proposed_block = set(range(start_pos, start_pos + block_size))
+            if not proposed_block.intersection(faulty_timesteps):
+                faulty_timesteps.update(proposed_block)
+                remaining_faulty_steps -= block_size
+            
+            # Safety check to avoid infinite loop
+            if len(faulty_timesteps) + remaining_faulty_steps > total_timesteps:
+                break
         
         return faulty_timesteps
+
+    
+    # def generate_fault_schedule(self):
+    #     """Generate blocks of faulty behavior based on fault percentage"""
+    #     faulty_timesteps = set()
+    #     #if random.random() < self.args.fault_prob:
+    #     faulty_timesteps.update(range(10, 60))
+        
+    #     faulty_timesteps.update(range(80,120))
+    #     faulty_timesteps.update(range(200,300))
+    #     faulty_timesteps.update(range(350,420))
+        
+    #     return faulty_timesteps
     
     def forward(self, inputs, memory=None, attn_mask=None, actions=None, return_aux_losses=False, timestep=0):
         # Check if current timestep should be faulty
         self._faulty = timestep in self.fault_schedule
-        
-        
-        
+
         # Get regular Q-values/logits from parent class
         if return_aux_losses:
             q, h, aux_losses = super().forward(inputs, memory=memory, attn_mask=attn_mask, actions=actions, return_aux_losses=return_aux_losses)
         else:
             q, h = super().forward(inputs, memory=memory, attn_mask=attn_mask, actions=actions, return_aux_losses=return_aux_losses)
+        
         if self.faulty_agent_indices and self._faulty:
             # For interleaved data, faulty agents appear every n_agents rows
             for faulty_idx in self.faulty_agent_indices:
@@ -110,3 +152,4 @@ class TransformerFaultyAgent(TransformerAgent):
         if return_aux_losses:
             return q, h, aux_losses
         return q, h
+        
