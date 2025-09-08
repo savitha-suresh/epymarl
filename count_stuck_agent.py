@@ -83,7 +83,7 @@ def display_stuck_agents(agent_tracking):
     #print(results)
     print(results.keys())
     for agent_id in results:
-        print(f"Agent id {agent_id} {len(results[agent_id])}")
+        print(f"Agent id {agent_id} {sum(results[agent_id])//4}")
 
 def main():
     input_dir = 'filtered_json'  # Directory containing the filtered JSON files
