@@ -289,7 +289,6 @@ class CrossAttentionBlock(nn.Module):
             B, T, A, _ = cross_attn_mask.shape
             mask = cross_attn_mask.unsqueeze(3)
           # [B, T_k, A_q, 1, 1, A_k]
-            print(cross_attn_mask[0][0])
             mask = mask.expand(B, T, A, T, A)  # [B, T, A, T, A]
 
             # Step 2: Reshape to [B, T*A, T*A]
@@ -435,10 +434,23 @@ class TransformerAgent(nn.Module):
         agent_labels = torch.ones(batch_size, self.args.max_seq_len, self.args.n_agents)
         return agent_labels
 
-    def build_cross_attn_mask(self):
-        pass 
+    def build_cross_attn_mask(self, faulty_indices=None):
+        # Create a mask that allows agents to attend to each other
+        # This is a square mask of size n_agents x n_agents
+        mask = torch.ones(self.args.n_agents, self.args.n_agents, device=self.args.device)
+        eye_mask = torch.eye(self.args.n_agents, device=self.args.device).unsqueeze(0)
+        eye_mask = eye_mask.expand(self.args.batch_size, -1, -1)
+        self_exclusion_mask = 1.0 - eye_mask
+        if faulty_indices:
+            for idx in faulty_indices:
+                mask[:, idx] = 0
+        mask =  mask.unsqueeze(0).expand(self.args.batch_size,  -1, -1)
+        mask = mask * self_exclusion_mask
+        mask = mask.unsqueeze(1).expand(-1, self.max_seq_len, -1, -1)
 
-    def forward(self, inputs, memory=None, attn_mask=None, actions=None, return_aux_losses=False, agent_labels=None):
+        return mask
+
+    def forward(self, inputs, memory=None, attn_mask=None, actions=None, return_aux_losses=False, agent_labels=None, faulty_indices=None):
         # inputs: (batch_size * n_agents, seq_len, input_dim)
         batch_size_agents, seq_len, input_dim = inputs.shape
         batch_size = batch_size_agents // self.args.n_agents
@@ -446,8 +458,8 @@ class TransformerAgent(nn.Module):
         
         emb, cross_attn_mask, aux_loss = self.similarity_net(inputs, agent_labels)
         
-        # cross_attn_mask = self.build_cross_attn_mask()
-        #print("Cross_attention mask shape:", cross_attn_mask)
+        cross_attn_mask = self.build_cross_attn_mask(faulty_indices=faulty_indices)
+        #print("Cross_attention mask shape:", cross_attn_mask[0][0])
         # Process inputs
         x = F.relu(self.fc1(inputs))
         x = self.input_norm(x)

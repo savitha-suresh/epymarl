@@ -43,7 +43,8 @@ class CentralVCritic(nn.Module):
             attn_mask=self.build_causal_mask(max_t, batch.device),
             actions=None,
             return_aux_losses=True,
-            agent_labels=agent_labels
+            agent_labels=agent_labels,
+            faulty_indices=faulty_indices
         )
         return q, loss
 
