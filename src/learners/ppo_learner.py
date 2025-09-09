@@ -82,7 +82,7 @@ class PPOLearner:
         # rewards = self.stuck_penalty.shape_rewards(rewards, positions)
         # rewards = self.osc_penalty.shape_rewards(rewards, positions)
         mask = mask.repeat(1, 1, self.n_agents)
-        mask = mask * active_agents
+        #mask = mask * active_agents
         critic_mask = mask.clone()
 
         old_mac_out = []
@@ -215,7 +215,11 @@ class PPOLearner:
         # Identify faulty agents (agents that always take no-op)
         v = critic(batch)[:, :-1].squeeze(3)  # (batch_size, episode_length, n_agents)
         td_error = target_returns.detach() - v
-
+        inactive_agents = th.tensor(list(self.mac.agent.faulty_agent_indices), device=batch.device)
+        active_agents = th.ones(self.n_agents, device=batch.device)
+        active_agents[inactive_agents] = 0
+        active_agents = active_agents.view(1, 1, -1)
+        mask = mask * active_agents
         # Apply agent mask
         masked_td_error = td_error * mask  # (batch_size, episode_length, n_agents)
 
