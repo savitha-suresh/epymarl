@@ -27,16 +27,16 @@ class CentralVCritic(nn.Module):
 
         return mask 
     
-    def generate_agent_labels(self, batch_size):
+    def generate_agent_labels(self, batch_size, faulty_indices=None):
         agent_labels = th.ones(batch_size, self.args.max_seq_len, self.args.n_agents, device=self.args.device)
-        if hasattr(self, 'faulty_agent_indices'):
-            for idx in self.faulty_agent_indices:
+        if faulty_indices is not None:
+            for idx in faulty_indices:
                 agent_labels[:, :, idx] = 0
         return agent_labels
 
     def forward(self, batch, t=None, faulty_indices=None):
         inputs, bs, max_t = self._build_inputs(batch, t=t)
-        agent_labels = self.generate_agent_labels(bs)
+        agent_labels = self.generate_agent_labels(bs, faulty_indices)
         q, _, loss = self.model(
             inputs,
             memory=None,

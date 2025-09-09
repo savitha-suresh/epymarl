@@ -217,7 +217,7 @@ class ClusterSimilarityNet(nn.Module):
         # Pairwise ground truth: 1 if same label, 0 if different
         # (batch, seq_len, n_agents, n_agents)
         label_sim = (labels.unsqueeze(-1) == labels.unsqueeze(-2)).float()
-
+        
         # Mask out self-pairs
         eye = torch.eye(n_agents, device=labels.device).unsqueeze(0).unsqueeze(0)
         label_sim = label_sim * (1.0 - eye)
@@ -289,7 +289,7 @@ class CrossAttentionBlock(nn.Module):
             B, T, A, _ = cross_attn_mask.shape
             mask = cross_attn_mask.unsqueeze(3)
           # [B, T_k, A_q, 1, 1, A_k]
-            
+            print(cross_attn_mask[0][0])
             mask = mask.expand(B, T, A, T, A)  # [B, T, A, T, A]
 
             # Step 2: Reshape to [B, T*A, T*A]
