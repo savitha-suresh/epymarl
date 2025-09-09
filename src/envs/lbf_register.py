@@ -16,7 +16,7 @@ def register_envs():
                     "min_player_level": 1,
                     "max_player_level": p,
                     "min_food_level": 1,
-                    "max_food_level": p,
+                    "max_food_level": f,
                     "field_size": (s, s),
                     "max_num_food": f,
                     "sight": o,
