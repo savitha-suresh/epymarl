@@ -3,6 +3,7 @@
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
+from .transformer_agent import TransformerAgent
 
 
 class CentralVCritic(nn.Module):
@@ -17,16 +18,34 @@ class CentralVCritic(nn.Module):
         self.output_type = "v"
 
         # Set up network layers
-        self.fc1 = nn.Linear(input_shape, args.hidden_dim)
-        self.fc2 = nn.Linear(args.hidden_dim, args.hidden_dim)
-        self.fc3 = nn.Linear(args.hidden_dim, 1)
+        self.model = TransformerAgent(input_shape, args)
 
-    def forward(self, batch, t=None):
+    def build_causal_mask(self, seq_len, device):
+        total_len = seq_len
+        # Allow attending to memory (mem_len), and to current and past in x
+        mask = th.triu(th.ones(1, total_len, device=device) * float('-inf'), diagonal=1)
+
+        return mask 
+    
+    def generate_agent_labels(self, batch_size):
+        agent_labels = th.ones(batch_size, self.args.max_seq_len, self.args.n_agents, device=self.args.device)
+        if hasattr(self, 'faulty_agent_indices'):
+            for idx in self.faulty_agent_indices:
+                agent_labels[:, :, idx] = 0
+        return agent_labels
+
+    def forward(self, batch, t=None, faulty_indices=None):
         inputs, bs, max_t = self._build_inputs(batch, t=t)
-        x = F.relu(self.fc1(inputs))
-        x = F.relu(self.fc2(x))
-        q = self.fc3(x)
-        return q
+        agent_labels = self.generate_agent_labels(bs)
+        q, _, loss = self.model(
+            inputs,
+            memory=None,
+            attn_mask=self.build_causal_mask(max_t, batch.device),
+            actions=None,
+            return_aux_losses=True,
+            agent_labels=agent_labels
+        )
+        return q, loss
 
     def _build_inputs(self, batch, t=None):
         bs = batch.batch_size
@@ -51,9 +70,10 @@ class CentralVCritic(nn.Module):
                 last_actions = last_actions.view(bs, max_t, 1, -1).repeat(1, 1, self.n_agents, 1)
                 inputs.append(last_actions)
 
-        inputs.append(th.eye(self.n_agents, device=batch.device).unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1))
+        #inputs.append(th.eye(self.n_agents, device=batch.device).unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1))
 
         inputs = th.cat(inputs, dim=-1)
+        inputs = inputs.permute(0, 2, 1, 3).reshape(bs * self.n_agents, max_t, -1)  # (bs * n_agents, max_t, input_shape)
         return inputs, bs, max_t
 
     def _get_input_shape(self, scheme):
@@ -65,5 +85,5 @@ class CentralVCritic(nn.Module):
         # last actions
         if self.args.obs_last_action:
             input_shape += scheme["actions_onehot"]["vshape"][0] * self.n_agents
-        input_shape += self.n_agents
+        #input_shape += self.n_agents
         return input_shape

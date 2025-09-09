@@ -18,6 +18,7 @@ REGISTRY["maddpg_critic"] = MADDPGCritic
 REGISTRY["maddpg_critic_ns"] = MADDPGCriticNS
 REGISTRY["ac_critic"] = ACCritic
 REGISTRY["ac_critic_ns"] = ACCriticNS
+#REGISTRY["grtxl_critic"] = TransformerAgent
 
 
 def register_pac_critics():

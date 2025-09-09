@@ -188,7 +188,7 @@ class PPOLearner:
         # Optimise critic
         
         with th.no_grad():
-            target_vals = target_critic(batch)
+            target_vals, _ = target_critic(batch, faulty_indices=self.mac.agent.faulty_agent_indices)
             target_vals = target_vals.squeeze(3)
 
         if self.args.standardise_returns:
@@ -213,7 +213,8 @@ class PPOLearner:
         }
 
         # Identify faulty agents (agents that always take no-op)
-        v = critic(batch)[:, :-1].squeeze(3)  # (batch_size, episode_length, n_agents)
+        v, aux_loss = critic(batch, faulty_indices=self.mac.agent.faulty_agent_indices)
+        v = v[:, :-1].squeeze(3)  # (batch_size, episode_length, n_agents)
         td_error = target_returns.detach() - v
 
         # Apply agent mask
@@ -221,7 +222,7 @@ class PPOLearner:
 
         # Compute loss only for active agents
         loss = (masked_td_error**2).sum() / (mask).sum()
-
+        loss += 0.05 * aux_loss
 
         self.critic_optimiser.zero_grad()
         loss.backward()
