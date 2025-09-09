@@ -18,6 +18,8 @@ import torch as th
 
 from utils.logging import get_logger
 from run import run
+from envs.lbf_register import register_envs
+register_envs()
 
 SETTINGS["CAPTURE_MODE"] = (
     "fd"  # set to "no" if you want to see stdout/stderr in console
@@ -30,6 +32,7 @@ ex.captured_out_filter = apply_backspaces_and_linefeeds
 
 results_path = os.path.join(dirname(dirname(abspath(__file__))), "results")
 # results_path = "/home/ubuntu/data"
+
 
 
 @ex.main
