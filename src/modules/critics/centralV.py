@@ -86,5 +86,5 @@ class CentralVCritic(nn.Module):
         # last actions
         if self.args.obs_last_action:
             input_shape += scheme["actions_onehot"]["vshape"][0] * self.n_agents
-        #input_shape += self.n_agents
+        input_shape += self.n_agents
         return input_shape
