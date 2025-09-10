@@ -6,4 +6,4 @@
 #SBATCH --time=3-00:00:00
 source ~/.bashrc
 conda activate ft-gym-env   # On Linux/macOS
-srun python -u src/main.py --config=mappo_lbf --env-config=gymma with env_args.time_limit=50 env_args.key="lbforaging:Foraging-10x10-4p-4f-1s-v3"
+srun python -u src/main.py --config=mappo_lbf --env-config=gymma with env_args.time_limit=50 env_args.key="lbforaging:Foraging-2s-10x10-4p-4f-v3"
