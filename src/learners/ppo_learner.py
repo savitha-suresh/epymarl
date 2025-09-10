@@ -8,7 +8,7 @@ from components.episode_buffer import EpisodeBatch
 from components.standarize_stream import RunningMeanStd
 from modules.critics import REGISTRY as critic_resigtry
 from components.penalty import StuckPenaltyRewardShaper, OscillationPenaltyRewardShaper
-
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 class PPOLearner:
     def __init__(self, mac, scheme, logger, args):
@@ -37,6 +37,8 @@ class PPOLearner:
 
         self.critic_params = list(self.critic.parameters())
         self.critic_optimiser = Adam(params=self.critic_params, lr=args.lr)
+        self.critic_scheduler = CosineAnnealingLR(
+            self.critic_optimiser, T_max=self.args.t_max)
         self.no_op_action = 0
 
         self.last_target_update_step = 0
@@ -222,7 +224,7 @@ class PPOLearner:
 
         # Compute loss only for active agents
         loss = (masked_td_error**2).sum() / (mask).sum()
-        loss += 0.05 * aux_loss
+        
 
         self.critic_optimiser.zero_grad()
         loss.backward()
@@ -230,6 +232,7 @@ class PPOLearner:
             self.critic_params, self.args.grad_norm_clip
         )
         self.critic_optimiser.step()
+        self.critic_scheduler.step()
 
         running_log["critic_loss"].append(loss.item())
         running_log["critic_grad_norm"].append(grad_norm.item())
