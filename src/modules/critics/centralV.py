@@ -16,15 +16,16 @@ class CentralVCritic(nn.Module):
 
         input_shape = self._get_input_shape(scheme)
         self.output_type = "v"
+        
 
         # Set up network layers
         self.model = TransformerAgent(input_shape, args)
+        self.memory = self.model.init_memory(args.batch_size)
 
-    def build_causal_mask(self, seq_len, device):
-        total_len = seq_len
+    def build_causal_mask(self, seq_len, mem_len, device):
+        total_len = mem_len + seq_len
         # Allow attending to memory (mem_len), and to current and past in x
-        mask = th.triu(th.ones(1, total_len, device=device) * float('-inf'), diagonal=1)
-
+        mask = th.triu(th.ones(seq_len, total_len, device=device) * float('-inf'), diagonal=1)
         return mask 
     
     def generate_agent_labels(self, batch_size, faulty_indices=None):
@@ -35,18 +36,32 @@ class CentralVCritic(nn.Module):
         return agent_labels
 
     def forward(self, batch, t=None, faulty_indices=None):
+        self.model.train()
         inputs, bs, max_t = self._build_inputs(batch, t=t)
-        agent_labels = self.generate_agent_labels(bs, faulty_indices)
-        q, _, loss = self.model(
-            inputs,
-            memory=None,
-            attn_mask=self.build_causal_mask(max_t, batch.device),
-            actions=None,
-            return_aux_losses=True,
-            agent_labels=agent_labels,
-            faulty_indices=faulty_indices
-        )
-        return q, loss
+        q_values = []
+        for t_step_curr in range(max_t):
+            inputs_curr = inputs[:, t_step_curr:t_step_curr+1]  # (bs * n_agents, 1, input_shape)
+            memory = self.memory
+            mem_len_now = 0 if memory is None else memory[0].size(1)
+            mask = self.build_causal_mask(
+                seq_len=inputs_curr.size(1), 
+                mem_len=mem_len_now, device=inputs.device) 
+            mask = mask.unsqueeze(0).unsqueeze(1)  # [1, 1, seq_len, total_len]
+            mask = mask.expand(self.args.batch_size * self.n_agents, self.args.n_heads, -1, -1)
+            agent_labels = self.generate_agent_labels(bs, faulty_indices)
+            q, hidden_states, loss = self.model(
+                inputs_curr,
+                memory=memory,
+                attn_mask=mask,
+                actions=None,
+                return_aux_losses=True,
+                agent_labels=agent_labels,
+                faulty_indices=faulty_indices
+            )
+            self.memory = self.model.update_memory(memory, hidden_states)
+            q_values.append(q)
+        final_q = th.stack(q_values, dim=1)
+        return final_q, loss
 
     def _build_inputs(self, batch, t=None):
         bs = batch.batch_size

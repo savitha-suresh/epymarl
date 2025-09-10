@@ -150,31 +150,18 @@ class ClusterSimilarityNet(nn.Module):
         )
 
     def forward(self, obs, labels=None):
-        batch_size_agents, seq_len, obs_dim = obs.shape
+        obs = obs.squeeze(1)
+        batch_size_agents, obs_dim = obs.shape
         batch_size = batch_size_agents // self.n_agents
-        n_agents = self.n_agents
-
-        # Reshape to (batch, n_agents, seq_len, obs_dim)
-        obs = obs.view(batch_size, n_agents, seq_len, obs_dim)
-
-        # Flatten for encoder
-        obs_flat = obs.reshape(batch_size * n_agents * seq_len, obs_dim)
 
         # Encode → embeddings
-        emb = self.encoder(obs_flat)                        # (batch*n_agents*seq_len, embed_dim)
-        emb = F.normalize(emb, p=2, dim=-1)                 # cosine normalize
+        emb = self.encoder(obs)                           # (batch*n_agents, embed_dim)
+        emb = F.normalize(emb, p=2, dim=-1)               # cosine normalize
+        emb = emb.view(batch_size, self.n_agents, -1)
 
-        # Reshape back → (batch, n_agents, seq_len, embed_dim)
-        emb = emb.view(batch_size, n_agents, seq_len, -1)
-
-        # Rearrange to (batch, seq_len, n_agents, embed_dim)
-        emb = emb.permute(0, 2, 1, 3)
-
-        # Similarity matrix across agents per timestep
-        sim_matrix = torch.matmul(emb, emb.transpose(-1, -2))  # (batch, seq_len, n_agents, n_agents)
-
-        # Remove self-similarity
-        eye = torch.eye(n_agents, device=obs.device).unsqueeze(0).unsqueeze(0)
+        # Similarity matrix
+        sim_matrix = torch.matmul(emb, emb.transpose(1, 2))  # (batch, n_agents, n_agents)
+        eye = torch.eye(self.n_agents, device=obs.device).unsqueeze(0)
         sim_matrix = sim_matrix * (1.0 - eye)
 
         # Cluster-based mask
@@ -183,56 +170,27 @@ class ClusterSimilarityNet(nn.Module):
         # Loss (if labels given)
         aux_loss = None
         if labels is not None:
-            # labels expected shape: (batch_size, seq_len, n_agents)
             aux_loss = self.cluster_loss(sim_matrix, labels)
 
         return emb, attn_mask, aux_loss
-        # obs = obs.squeeze(1)
-        # batch_size_agents, obs_dim = obs.shape
-        # batch_size = batch_size_agents // self.n_agents
-
-        # # Encode → embeddings
-        # emb = self.encoder(obs)                           # (batch*n_agents, embed_dim)
-        # emb = F.normalize(emb, p=2, dim=-1)               # cosine normalize
-        # emb = emb.view(batch_size, self.n_agents, -1)
-
-        # # Similarity matrix
-        # sim_matrix = torch.matmul(emb, emb.transpose(1, 2))  # (batch, n_agents, n_agents)
-        # eye = torch.eye(self.n_agents, device=obs.device).unsqueeze(0)
-        # sim_matrix = sim_matrix * (1.0 - eye)
-
-        # # Cluster-based mask
-        # attn_mask = (sim_matrix > self.threshold).float()
-
-        # # Loss (if labels given)
-        # aux_loss = None
-        # if labels is not None:
-        #     aux_loss = self.cluster_loss(sim_matrix, labels)
-
-        # return emb, attn_mask, aux_loss
     
     def cluster_loss(self, sim_matrix, labels, margin=0.5):
-        batch_size, seq_len, n_agents, _ = sim_matrix.shape
-
-        # Pairwise ground truth: 1 if same label, 0 if different
-        # (batch, seq_len, n_agents, n_agents)
-        label_sim = (labels.unsqueeze(-1) == labels.unsqueeze(-2)).float()
+        batch_size, n_agents, _ = sim_matrix.shape
         
-        # Mask out self-pairs
-        eye = torch.eye(n_agents, device=labels.device).unsqueeze(0).unsqueeze(0)
-        label_sim = label_sim * (1.0 - eye)
-
+        # Pairwise ground truth: 1 if same label, 0 if different
+        label_sim = (labels.unsqueeze(1) == labels.unsqueeze(2)).float()
+        eye = torch.eye(n_agents, device=labels.device).unsqueeze(0)
+        label_sim = label_sim * (1.0 - eye)  # no self-pairs
+        
         # Loss for similar pairs (same label) → want sim close to 1
         pos_loss = (1 - sim_matrix) * label_sim
-
+        
         # Loss for dissimilar pairs (different label) → want sim below margin
         neg_loss = F.relu(sim_matrix - margin) * (1.0 - label_sim)
-
-        # Average across everything
-        denom = label_sim.sum() + (1.0 - label_sim).sum() + 1e-8
-        loss = (pos_loss.sum() + neg_loss.sum()) / denom
-
-        return loss 
+        
+        # Average
+        loss = (pos_loss.sum() + neg_loss.sum()) / (label_sim.sum() + (1.0 - label_sim).sum() + 1e-8)
+        return loss
 
 
 class CrossAttentionBlock(nn.Module):
@@ -284,24 +242,26 @@ class CrossAttentionBlock(nn.Module):
         # Build cross-attention mask (vectorized)
         # -------------------------------
         if cross_attn_mask is not None:
-            # cross_attn_mask: [B, Tk, A, A]
-            # We want to build attn_mask: [B, Tq*A, Tk*A] -> in this case [B, A, 501*A]
-            B, T, A, _ = cross_attn_mask.shape
-            mask = cross_attn_mask.unsqueeze(3)
-          # [B, T_k, A_q, 1, 1, A_k]
-            mask = mask.expand(B, T, A, T, A)  # [B, T, A, T, A]
+            # cross_attn_mask: [B, A, A] -> expand to token level
+            # For each timestep, only allow agent i to attend to allowed agents j
+            # Result: [B, Tq*A, Tk*A]
+            # B_idx = torch.arange(batch_size, device=query.device)[:, None, None]
+            # Tq_idx = torch.arange(Tq, device=query.device)[None, :, None]
+            # Tk_idx = torch.arange(Tk, device=query.device)[None, None, :]
 
-            # Step 2: Reshape to [B, T*A, T*A]
-            mask = mask.reshape(B, T * A, T * A)
+            # Vectorized expansion using kron
+            # block_diag over timesteps: [Tq*A, Tk*A]
+            mask_block = torch.kron(torch.ones(Tq, Tk, device=query.device), cross_attn_mask[0])
+            attn_mask = mask_block.unsqueeze(0).expand(batch_size, -1, -1)
 
-            # Step 3: Convert to additive attention mask
-            # (1 = allow, 0 = block) → (0, -inf)
-            attn_mask = (1.0 - mask).to(dtype=torch.float32) * -1e9  # [B, T*A, T*A]
+            # Add heads dimension
+            attn_mask = attn_mask.unsqueeze(1).expand(batch_size, self.n_heads, -1, -1)
 
-            # Step 4: Add heads dimension [B, 1, T*A, T*A] → [B, n_heads, T*A, T*A]
-            attn_mask = attn_mask.unsqueeze(1).expand(B, self.n_heads, T * A, T * A)
+            # Convert to additive mask (1=allow, 0=block -> 0/-inf)
+            attn_mask = (1.0 - attn_mask).to(query.dtype) * (-1e9)
         else:
             attn_mask = None
+
         # -------------------------------
         # Cross attention
         # -------------------------------
@@ -352,8 +312,7 @@ class EnhancedDecoderBlock(nn.Module):
         if memory is not None:
             x_cat = torch.cat([memory, x], dim=1)
         else:
-            x_cat = x.clone()
-        
+            x_cat = x
             
         # self_attn_op = self.self_attn(
         #     self.norm1(x), self.norm_kv(x_cat), self.norm_kv(x_cat),
@@ -411,7 +370,6 @@ class TransformerAgent(nn.Module):
         self.output_norm = nn.LayerNorm(args.hidden_dim)
         self.fc2 = nn.Linear(args.hidden_dim, 1)
         self.memories = [None for _ in range(args.n_layers)]
-        self.init_hidden()
 
     def init_hidden(self):
         self.memories = [None for _ in range(self.n_layers)]
@@ -431,22 +389,22 @@ class TransformerAgent(nn.Module):
             return new_memory
         
     def generate_agent_labels(self, batch_size):
-        agent_labels = torch.ones(batch_size, self.args.max_seq_len, self.args.n_agents)
+        agent_labels = torch.ones(batch_size, self.args.n_agents)
         return agent_labels
 
     def build_cross_attn_mask(self, faulty_indices=None):
         # Create a mask that allows agents to attend to each other
         # This is a square mask of size n_agents x n_agents
         mask = torch.ones(self.args.n_agents, self.args.n_agents, device=self.args.device)
-        eye_mask = torch.eye(self.args.n_agents, device=self.args.device).unsqueeze(0)
-        eye_mask = eye_mask.expand(self.args.batch_size, -1, -1)
-        self_exclusion_mask = 1.0 - eye_mask
+        # eye_mask = torch.eye(self.args.n_agents, device=self.args.device).unsqueeze(0)
+        # eye_mask = eye_mask.expand(self.args.batch_size, -1, -1)
+        # self_exclusion_mask = 1.0 - eye_mask
         if faulty_indices:
             for idx in faulty_indices:
                 mask[:, idx] = 0
         mask =  mask.unsqueeze(0).expand(self.args.batch_size,  -1, -1)
-        mask = mask * self_exclusion_mask
-        mask = mask.unsqueeze(1).expand(-1, self.max_seq_len, -1, -1)
+        #mask = mask * self_exclusion_mask
+        #mask = mask.unsqueeze(1).expand(-1, self.max_seq_len, -1, -1)
 
         return mask
 
@@ -455,11 +413,11 @@ class TransformerAgent(nn.Module):
         batch_size_agents, seq_len, input_dim = inputs.shape
         batch_size = batch_size_agents // self.args.n_agents
         hidden_states = []
+        agent_labels = self.generate_agent_labels(self.args.batch_size)
+        #emb, cross_attn_mask, aux_loss = self.similarity_net(inputs, agent_labels)
         
-        emb, cross_attn_mask, aux_loss = self.similarity_net(inputs, agent_labels)
-        
-        cross_attn_mask = self.build_cross_attn_mask(faulty_indices=faulty_indices)
-        #print("Cross_attention mask shape:", cross_attn_mask[0][0])
+        cross_attn_mask = self.build_cross_attn_mask()
+        #print("Cross_attention mask shape:", cross_attn_mask)
         # Process inputs
         x = F.relu(self.fc1(inputs))
         x = self.input_norm(x)
@@ -474,7 +432,7 @@ class TransformerAgent(nn.Module):
             
             x = layer(
                 x=x,
-                memory=None,
+                memory=mem,
                 cross_attn_mask=cross_attn_mask,
                 attn_mask=attn_mask
             )
@@ -485,9 +443,10 @@ class TransformerAgent(nn.Module):
 
         x = self.output_norm(x)
         q = self.fc2(x)
-        q = q.view(batch_size, self.args.n_agents, -1, q.size(-1)).permute(0, 2, 1, 3)
+        q = q.squeeze(1)
+        q = q.view(batch_size, self.args.n_agents, -1)
         if return_aux_losses:
-            return q, hidden_states, aux_loss
+            return q, hidden_states, None
         return q, hidden_states
     
 # class TransformerAgent(nn.Module):
