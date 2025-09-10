@@ -376,7 +376,7 @@ class TransformerAgent(nn.Module):
 
     def init_memory(self, batch_size):
         return [torch.zeros(batch_size * self.args.n_agents, 0, self.args.hidden_dim,
-                           device=next(self.parameters()).device) for _ in self.layers]
+                           device=self.args.device) for _ in self.layers]
 
     def update_memory(self, memory, hidden_states):
         with torch.no_grad():
