@@ -71,7 +71,7 @@ class CentralVCritic(nn.Module):
                 last_actions = last_actions.view(bs, max_t, 1, -1).repeat(1, 1, self.n_agents, 1)
                 inputs.append(last_actions)
 
-        #inputs.append(th.eye(self.n_agents, device=batch.device).unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1))
+        inputs.append(th.eye(self.n_agents, device=batch.device).unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1))
 
         inputs = th.cat(inputs, dim=-1)
         inputs = inputs.permute(0, 2, 1, 3).reshape(bs * self.n_agents, max_t, -1)  # (bs * n_agents, max_t, input_shape)
