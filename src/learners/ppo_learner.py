@@ -113,7 +113,7 @@ class PPOLearner:
 
             pi = mac_out
             advantages, critic_train_stats = self.train_critic_sequential(
-                self.critic, self.target_critic, batch, rewards, critic_mask, actions
+                self.critic, self.target_critic, batch, rewards, critic_mask, actions, faulty_indices=self.mac.agent.faulty_agent_indices
             )
             advantages = advantages.detach()
             # Calculate policy grad with mask
@@ -190,11 +190,11 @@ class PPOLearner:
             )
             self.log_stats_t = t_env
 
-    def train_critic_sequential(self, critic, target_critic, batch, rewards, mask, actions=None):
+    def train_critic_sequential(self, critic, target_critic, batch, rewards, mask, actions=None, faulty_indices={}):
         # Optimise critic
         
         with th.no_grad():
-            target_vals = target_critic(batch)
+            target_vals = target_critic(batch, faulty_indices=faulty_indices)
             target_vals = target_vals.squeeze(3)
 
         if self.args.standardise_returns:
@@ -219,7 +219,7 @@ class PPOLearner:
         }
 
         # Identify faulty agents (agents that always take no-op)
-        v = critic(batch)[:, :-1].squeeze(3)  # (batch_size, episode_length, n_agents)
+        v = critic(batch, faulty_indices=faulty_indices)[:, :-1].squeeze(3)  # (batch_size, episode_length, n_agents)
         td_error = target_returns.detach() - v
 
         # Apply agent mask
