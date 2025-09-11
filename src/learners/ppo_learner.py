@@ -141,7 +141,7 @@ class PPOLearner:
             total_loss = pg_loss + 0.05 * aux_loss
             
             self.agent_optimiser.zero_grad()
-            total_loss.backward()
+            pg_loss.backward()
             grad_norm = th.nn.utils.clip_grad_norm_(
                 self.agent_params, self.args.grad_norm_clip
             )
