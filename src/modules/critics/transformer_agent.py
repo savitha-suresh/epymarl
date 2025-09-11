@@ -368,13 +368,13 @@ class EnhancedDecoderBlock(nn.Module):
             key_value=x_cat,
             cross_attn_mask=cross_attn_mask
         )
-        h2 = self.gate2(x, cross_attn_op)
+        h2 = x + cross_attn_op
         
         
         # Feed forward
         h2_norm = self.norm3(h2)
         forward = self.ffn(h2_norm)
-        out = self.gate3(h2, forward)
+        out = h2 + forward
         
         return out
 
@@ -438,14 +438,15 @@ class TransformerAgent(nn.Module):
         # Create a mask that allows agents to attend to each other
         # This is a square mask of size n_agents x n_agents
         mask = torch.ones(self.args.n_agents, self.args.n_agents, device=self.args.device)
-        eye_mask = torch.eye(self.args.n_agents, device=self.args.device).unsqueeze(0)
-        eye_mask = eye_mask.expand(self.args.batch_size, -1, -1)
-        self_exclusion_mask = 1.0 - eye_mask
-        if faulty_indices:
-            for idx in faulty_indices:
-                mask[:, idx] = 0
+        # eye_mask = torch.eye(self.args.n_agents, device=self.args.device).unsqueeze(0)
+        # eye_mask = eye_mask.expand(self.args.batch_size, -1, -1)
+        # self_exclusion_mask = 1.0 - eye_mask
+        # if faulty_indices:
+        #     for idx in faulty_indices:
+        #         mask[:, idx] = 0
+        #         mask[idx, :] = 0
         mask =  mask.unsqueeze(0).expand(self.args.batch_size,  -1, -1)
-        mask = mask * self_exclusion_mask
+        # #mask = mask * self_exclusion_mask
         mask = mask.unsqueeze(1).expand(-1, self.max_seq_len, -1, -1)
 
         return mask
@@ -483,7 +484,7 @@ class TransformerAgent(nn.Module):
             # Update all_agent_states for next layer
             all_agent_states = x.clone()
 
-        x = self.output_norm(x)
+        #x = self.output_norm(x)
         q = self.fc2(x)
         q = q.view(batch_size, self.args.n_agents, -1, q.size(-1)).permute(0, 2, 1, 3)
         if return_aux_losses:
