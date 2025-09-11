@@ -52,8 +52,8 @@ class CentralVCritic(nn.Module):
                 inputs.append(last_actions)
 
         inputs.append(th.eye(self.n_agents, device=batch.device).unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1))
-        fault_mask = th.zeros(self.n_agents, device=batch.device)  # [n_agents]
-        fault_mask[list(faulty_indices)] = 1  # mark faulty agents
+        fault_mask = th.ones(self.n_agents, device=batch.device)  # [n_agents]
+        fault_mask[list(faulty_indices)] = 0  # mark faulty agents
 
         # expand to match [bs, max_t, n_agents, 1]
         fault_mask = fault_mask.view(1, 1, self.n_agents, 1).expand(bs, max_t, -1, -1)
