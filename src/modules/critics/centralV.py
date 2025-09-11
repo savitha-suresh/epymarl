@@ -21,14 +21,14 @@ class CentralVCritic(nn.Module):
         self.fc2 = nn.Linear(args.hidden_dim, args.hidden_dim)
         self.fc3 = nn.Linear(args.hidden_dim, 1)
 
-    def forward(self, batch, t=None):
-        inputs, bs, max_t = self._build_inputs(batch, t=t)
+    def forward(self, batch, t=None, faulty_indices={}):
+        inputs, bs, max_t = self._build_inputs(batch, t=t, faulty_indices=faulty_indices)
         x = F.relu(self.fc1(inputs))
         x = F.relu(self.fc2(x))
         q = self.fc3(x)
         return q
 
-    def _build_inputs(self, batch, t=None):
+    def _build_inputs(self, batch, t=None, faulty_indices={}):
         bs = batch.batch_size
         max_t = batch.max_seq_length if t is None else 1
         ts = slice(None) if t is None else slice(t, t+1)
@@ -52,6 +52,13 @@ class CentralVCritic(nn.Module):
                 inputs.append(last_actions)
 
         inputs.append(th.eye(self.n_agents, device=batch.device).unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1))
+        fault_mask = th.zeros(self.n_agents, device=batch.device)  # [n_agents]
+        fault_mask[list(faulty_indices)] = 1  # mark faulty agents
+
+        # expand to match [bs, max_t, n_agents, 1]
+        fault_mask = fault_mask.view(1, 1, self.n_agents, 1).expand(bs, max_t, -1, -1)
+        inputs.append(fault_mask)
+
 
         inputs = th.cat(inputs, dim=-1)
         return inputs, bs, max_t
@@ -66,4 +73,5 @@ class CentralVCritic(nn.Module):
         if self.args.obs_last_action:
             input_shape += scheme["actions_onehot"]["vshape"][0] * self.n_agents
         input_shape += self.n_agents
+        input_shape += 1  # fault mask
         return input_shape
