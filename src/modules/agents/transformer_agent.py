@@ -294,11 +294,11 @@ class EnhancedDecoderBlock(nn.Module):
         self.norm_kv = nn.LayerNorm(d_model)
         
         # Self attention (within agent)
-        self.self_attn = RelativeMultiHeadAttention(
-            d_model=d_model,
-            n_heads=nhead,
-            max_seq_len=max_seq_len,
-        )
+        # self.self_attn = RelativeMultiHeadAttention(
+        #     d_model=d_model,
+        #     n_heads=nhead,
+        #     max_seq_len=max_seq_len,
+        # )
         
         # Cross attention (between agents)
         self.cross_attn_block = CrossAttentionBlock(d_model, nhead, n_agents, max_seq_len)
@@ -314,20 +314,20 @@ class EnhancedDecoderBlock(nn.Module):
         else:
             x_cat = x
             
-        self_attn_op = self.self_attn(
-            self.norm1(x), self.norm_kv(x_cat), self.norm_kv(x_cat),
-            attn_mask=attn_mask
-        )[0]
-        h1 = self.gate1(x, self_attn_op)
+        # self_attn_op = self.self_attn(
+        #     self.norm1(x), self.norm_kv(x_cat), self.norm_kv(x_cat),
+        #     attn_mask=attn_mask
+        # )[0]
+        # h1 = self.gate1(x, self_attn_op)
         
         # Cross attention with other agents
         
         cross_attn_op = self.cross_attn_block(
-            query=h1,
+            query=x,
             key_value=x_cat,
             cross_attn_mask=cross_attn_mask
         )
-        h2 = self.gate2(h1, cross_attn_op)
+        h2 = self.gate2(x, cross_attn_op)
         
         
         # Feed forward
