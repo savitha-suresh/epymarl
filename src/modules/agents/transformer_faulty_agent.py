@@ -54,7 +54,8 @@ class TransformerFaultyAgent(TransformerAgent):
         # Check if we should make agents faulty
         if self.faulty_agent_indices and not self._faulty and random.random() < self.args.fault_prob:
             self._faulty = True
-            logger.console_logger.info(f"Became faulty at step {step}")
+            if logger:
+                logger.console_logger.info(f"Became faulty at step {step}")
             
         # Get regular Q-values/logits from parent class
         if return_aux_losses:
