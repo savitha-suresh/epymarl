@@ -82,8 +82,8 @@ class PPOLearner:
             # reshape rewards to be of shape (batch_size, episode_length, n_agents)
             rewards = rewards.expand(-1, -1, self.n_agents)
 
-        #rewards = self.stuck_penalty.shape_rewards(rewards, positions)
-        #rewards = self.osc_penalty.shape_rewards(rewards, positions)
+        # rewards = self.stuck_penalty.shape_rewards(rewards, positions)
+        # rewards = self.osc_penalty.shape_rewards(rewards, positions)
         mask = mask.repeat(1, 1, self.n_agents)
         #mask = mask * active_agents
         critic_mask = mask.clone()
@@ -196,25 +196,41 @@ class PPOLearner:
             self.log_stats_t = t_env
 
     def train_critic_sequential(self, critic, target_critic, batch, rewards, mask, actions=None):
-        # Optimise critic
+        """
+        Train critic with GAE instead of plain n-step returns.
         
+        rewards: (B, T, N)
+        mask: (B, T, N), 1 = valid, 0 = invalid (terminated)
+        """
+
         with th.no_grad():
-            target_vals = target_critic(batch)
-            target_vals = target_vals.squeeze(3)
+            # target critic produces V(s) for all timesteps including bootstrap
+            target_vals = target_critic(batch)  # (B, T+1, N, 1)
+            target_vals = target_vals.squeeze(3)                               # (B, T+1, N)
 
         if self.args.standardise_returns:
             target_vals = target_vals * th.sqrt(self.ret_ms.var) + self.ret_ms.mean
 
-        target_returns = self.nstep_returns(
-            rewards, mask, target_vals, self.args.q_nstep
-        )
-        
-        if self.args.standardise_returns:
-            self.ret_ms.update(target_returns)
-            target_returns = (target_returns - self.ret_ms.mean) / th.sqrt(
-                self.ret_ms.var
-            )
+        B, T, N = rewards.shape
 
+        # ---- GAE computation ----
+        advantages = th.zeros_like(rewards)
+        gae = th.zeros(B, N, device=rewards.device)
+        returns = th.zeros_like(rewards)
+
+        for t in reversed(range(T)):
+            # delta_t = r_t + γ * V_{t+1} * mask_t+1 - V_t
+            next_mask = mask[:, t]  # (B,N) at time t
+            delta = rewards[:, t] + self.args.gamma * target_vals[:, t+1] * next_mask - target_vals[:, t]
+            gae = delta + self.args.gamma * self.args.gae_lambda * next_mask * gae
+            advantages[:, t] = gae
+            returns[:, t] = advantages[:, t] + target_vals[:, t]
+
+        if self.args.standardise_returns:
+            self.ret_ms.update(returns)
+            returns = (returns - self.ret_ms.mean) / th.sqrt(self.ret_ms.var)
+
+        # ---- Critic training ----
         running_log = {
             "critic_loss": [],
             "critic_grad_norm": [],
@@ -223,16 +239,13 @@ class PPOLearner:
             "q_taken_mean": [],
         }
 
-        # Identify faulty agents (agents that always take no-op)
-        v = critic(batch)[:, :-1].squeeze(3)  # (batch_size, episode_length, n_agents)
-        td_error = target_returns.detach() - v
+        # critic’s predicted values
+        v = critic(batch)[:, :-1].squeeze(3)  # (B, T, N)
 
-        # Apply agent mask
-        masked_td_error = td_error * mask  # (batch_size, episode_length, n_agents)
+        td_error = returns.detach() - v
+        masked_td_error = td_error * mask
 
-        # Compute loss only for active agents
-        loss = (masked_td_error**2).sum() / (mask).sum()
-
+        loss = (masked_td_error**2).sum() / mask.sum()
 
         self.critic_optimiser.zero_grad()
         loss.backward()
@@ -248,11 +261,11 @@ class PPOLearner:
             (masked_td_error.abs().sum().item() / mask_elems)
         )
         running_log["q_taken_mean"].append((v * mask).sum().item() / mask_elems)
-        running_log["target_mean"].append(
-            (target_returns * mask).sum().item() / mask_elems
-        )
+        running_log["target_mean"].append((returns * mask).sum().item() / mask_elems)
 
-        return masked_td_error, running_log
+        # return advantages (masked)
+        return advantages * mask, running_log
+
 
     def nstep_returns(self, rewards, mask, values, nsteps):
         nstep_values = th.zeros_like(values[:, :-1])
