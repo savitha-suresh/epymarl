@@ -92,7 +92,7 @@ class PPOLearner:
         self.old_mac.init_hidden(batch.batch_size)
         for t in range(0, batch.max_seq_length - 1, self.segment_len):
             t_end = min(t + self.segment_len, batch.max_seq_length - 1)
-            agent_outs = self.old_mac.forward(batch, t=t, t_end=t_end, actions=actions, return_aux_losses=False)
+            agent_outs = self.old_mac.forward(batch, t=t, t_end=t_end, actions=actions, return_aux_losses=False, logger=self.logger)
             old_mac_out.append(agent_outs)
         old_mac_out = th.cat(old_mac_out, dim=1)  # Concat over time
         old_pi = old_mac_out
@@ -106,7 +106,7 @@ class PPOLearner:
             self.mac.init_hidden(batch.batch_size)
             for t in range(0, batch.max_seq_length - 1, self.segment_len):
                 t_end = min(t + self.segment_len, batch.max_seq_length - 1)
-                agent_outs, aux_loss = self.mac.forward(batch, t=t, t_end=t_end, actions=actions, return_aux_losses=True)
+                agent_outs, aux_loss = self.mac.forward(batch, t=t, t_end=t_end, actions=actions, return_aux_losses=True, logger=self.logger)
                 mac_out.append(agent_outs)
                 aux_losses.append(aux_loss)
             mac_out = th.cat(mac_out, dim=1)  # Concat over time

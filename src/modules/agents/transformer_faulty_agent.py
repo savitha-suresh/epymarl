@@ -50,11 +50,11 @@ class TransformerFaultyAgent(TransformerAgent):
         mask = mask * self_exclusion_mask
         return mask
 
-    def forward(self, inputs, memory=None, attn_mask=None, actions=None, return_aux_losses=False):
+    def forward(self, inputs, memory=None, attn_mask=None, actions=None, return_aux_losses=False, step=0, logger=None):
         # Check if we should make agents faulty
         if self.faulty_agent_indices and not self._faulty and random.random() < self.args.fault_prob:
             self._faulty = True
-            
+            logger.console_logger.info(f"Became faulty at step {step}")
             
         # Get regular Q-values/logits from parent class
         if return_aux_losses:
