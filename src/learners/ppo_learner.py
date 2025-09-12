@@ -112,8 +112,11 @@ class PPOLearner:
             mac_out = th.cat(mac_out, dim=1)  # Concat over time
 
             pi = mac_out
+            faulty_indices = self.mac.agent.faulty_agent_indices
+            if not self.mac.agent._faulty:
+                faulty_indices = {}
             advantages, critic_train_stats = self.train_critic_sequential(
-                self.critic, self.target_critic, batch, rewards, critic_mask, actions, faulty_indices=self.mac.agent.faulty_agent_indices
+                self.critic, self.target_critic, batch, rewards, critic_mask, actions, faulty_indices=faulty_indices
             )
             advantages = advantages.detach()
             # Calculate policy grad with mask
