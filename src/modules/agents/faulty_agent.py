@@ -23,7 +23,7 @@ class FaultyAgent(RNNAgent):
     def init_random_fault(self):
         # self.faulty_agent_indices = set(random.sample(range(self.args.n_agents), 
         #                                               self.args.n_faulty_agents))
-        self.faulty_agent_indices = {1}
+        self.faulty_agent_indices = {int(self.args.fault_idx)}
         self._faulty = False
 
     def forward(self, inputs, hidden_state):
