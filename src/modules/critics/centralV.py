@@ -4,8 +4,6 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
-
-
 class CentralVCritic(nn.Module):
     def __init__(self, scheme, args):
         super(CentralVCritic, self).__init__()
@@ -18,59 +16,67 @@ class CentralVCritic(nn.Module):
         input_shape = self._get_input_shape(scheme)
         self.output_type = "v"
 
-        self.key = nn.Linear(input_shape, args.hidden_dim)
-        self.query = nn.Linear(input_shape, args.hidden_dim)
-        self.value = nn.Linear(input_shape, args.hidden_dim)
+        # Attention projections
+        self.x_proj = nn.Linear(input_shape, args.hidden_dim)
+        self.key = nn.Linear(args.hidden_dim, args.hidden_dim)
+        self.query = nn.Linear(args.hidden_dim, args.hidden_dim)
+        self.value = nn.Linear(args.hidden_dim, args.hidden_dim)
 
-        self.fc_out = nn.Sequential(
+        # Feed-forward MLP after attention
+        self.mlp = nn.Sequential(
             nn.Linear(args.hidden_dim, args.hidden_dim),
             nn.ReLU(),
-            nn.Linear(args.hidden_dim, 1)
+            nn.Linear(args.hidden_dim, args.hidden_dim)
         )
 
-        # Set up network layers
-        # self.fc1 = nn.Linear(input_shape, args.hidden_dim)
-        # self.fc2 = nn.Linear(args.hidden_dim, args.hidden_dim)
-        # self.fc3 = nn.Linear(args.hidden_dim, 1)
+        # LayerNorms
+        self.ln_attn = nn.LayerNorm(args.hidden_dim)
+        self.ln_ff = nn.LayerNorm(args.hidden_dim)
+
+        # Final scalar output per agent-timestep
+        self.fc_out = nn.Linear(args.hidden_dim, 1)
 
     def forward(self, batch, t=None, attn_mask=None):
+        # Build inputs: [B, T, N, D]
         inputs, bs, max_t = self._build_inputs(batch, t=t)
-        # x = F.relu(self.fc1(inputs))
-        # x = F.relu(self.fc2(x))
-        # q = self.fc3(x)
-
         B, T, N, D = inputs.shape
-        x = inputs.view(B,T, N, D)  # [B*T, N, Obs_dim]
 
-        x = x.contiguous().view(B, T*N, D)  # flatten timestep-major: t1_a1..t1_aN, t2_a1..tT_aN
-        mask_block = th.kron(th.ones(T, T, device=batch.device), attn_mask[0])
-        mask = mask_block.unsqueeze(0).expand(B, -1, -1)
+        # Flatten timestep-major: t1_a1, t1_a2,... tT_aN
+        x = inputs.contiguous().view(B, T*N, D)
+        x = self.x_proj(x)  # [B, T*N, hidden_dim]
 
-        # Add heads dimension
-        
-        # Convert to additive mask (1=allow, 0=block -> 0/-inf)
-        mask = (1.0 - mask).to(x.dtype) * (-1e9)
+
+        # --- Keep your kron-based mask ---
+        mask_block = th.kron(th.ones(T, T, device=batch.device), attn_mask[0])  # [T*N, T*N]
+        mask = mask_block.unsqueeze(0).expand(B, -1, -1)                        # [B, T*N, T*N]
+
+        # Convert 0/1 mask to additive form for softmax
+        mask = (1.0 - mask).to(x.dtype) * (-1e9)  # 1=block -> -1e9, 0=allow -> 0
 
         # Linear projections
         Q = self.query(x)  # [B, T*N, hidden_dim]
         K = self.key(x)
         V = self.value(x)
-        
+
         # Compute attention
         scores = th.matmul(Q, K.transpose(-2, -1)) / (self.hidden_dim ** 0.5)
-        scores = scores.masked_fill(mask == 0, float('-inf'))
-
+        scores = scores + mask                       # additive masking
         attn_weights = F.softmax(scores, dim=-1)
-        out = th.matmul(attn_weights, V)  # [B, T*N, hidden_dim]
+        attn_out = th.matmul(attn_weights, V)        # [B, T*N, hidden_dim]
+
+        # Residual + LayerNorm
+        x = self.ln_attn(x + attn_out)
+
+        # Feed-forward MLP + residual + LayerNorm
+        ff_out = self.mlp(x)
+        x = self.ln_ff(x + ff_out)
 
         # Map to scalar per agent-timestep
-        v = self.fc_out(out)  # [B, T*N, 1]
+        v = self.fc_out(x)         # [B, T*N, 1]
+        v = v.view(B, T, N, 1)     # [B, T, N, 1]
 
-        # Reshape back to [B, T, N, 1]
-        v = v.view(B, T, N, 1)
         return v
 
-        
 
     def _build_inputs(self, batch, t=None):
         bs = batch.batch_size
