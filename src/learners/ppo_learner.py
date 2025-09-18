@@ -192,9 +192,9 @@ class PPOLearner:
 
     def train_critic_sequential(self, critic, target_critic, batch, rewards, mask, actions=None):
         # Optimise critic
-        
+        attn_mask = self.mac.agent.build_cross_attn_mask()
         with th.no_grad():
-            target_vals = target_critic(batch)
+            target_vals = target_critic(batch, attn_mask=attn_mask)
             target_vals = target_vals.squeeze(3)
 
         if self.args.standardise_returns:
@@ -219,7 +219,7 @@ class PPOLearner:
         }
 
         # Identify faulty agents (agents that always take no-op)
-        v = critic(batch)[:, :-1].squeeze(3)  # (batch_size, episode_length, n_agents)
+        v = critic(batch, attn_mask=attn_mask)[:, :-1].squeeze(3)  # (batch_size, episode_length, n_agents)
         td_error = target_returns.detach() - v
 
         # Apply agent mask
