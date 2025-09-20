@@ -36,7 +36,7 @@ t_max: 20050000
 
 # --- Faulty env params ---
 # These are used to introduce faults into the environment
-fault_prob: 0.1  # Probability of a fault occuring. Expected fault will occur after 1000 steps
+fault_prob: 0.075  # Probability of a fault occuring. Expected fault will occur after 1000 steps
 n_faulty_agents: 1 # Number of faulty agents
 agent: "transformer_faulty" # faulty rnn agent
 log_obs: False
