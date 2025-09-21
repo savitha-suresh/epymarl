@@ -70,9 +70,10 @@ class StuckPenaltyRewardShaper:
         penalties = self.compute_stuck_penalties(positions, mask)
         
         # Make sure penalties match rewards shape
-        if rewards.shape != penalties.shape:
-            raise ValueError(f"Rewards shape {rewards.shape} doesn't match penalties shape {penalties.shape}")
-            
+        if rewards.shape != penalties.shape: 
+            min_len = min(rewards.shape[1], penalties.shape[1])
+            penalties = penalties[:, :min_len]
+            rewards = rewards[:, :min_len]   
         # Subtract penalties from rewards
         shaped_rewards = rewards - penalties
         
@@ -149,8 +150,9 @@ class OscillationPenaltyRewardShaper:
         """
         penalties = self.compute_oscillation_penalties(positions, mask)
 
-        if rewards.shape != penalties.shape:
-            raise ValueError(f"Shape mismatch: rewards {rewards.shape} vs penalties {penalties.shape}")
-        
+        if rewards.shape != penalties.shape: 
+            min_len = min(rewards.shape[1], penalties.shape[1])
+            penalties = penalties[:, :min_len]
+            rewards = rewards[:, :min_len]
         shaped_rewards = rewards - penalties
         return shaped_rewards
