@@ -54,7 +54,7 @@ class TransformerFaultyAgent(TransformerAgent):
             std = (spread * mean) / 2  # because 95% ≈ ±2σ
         
         k = int(random.gauss(mean, std))
-        return max(0, min(T-1, k))
+        return max(0, k)
     
 
     def generate_agent_labels(self, batch_size):
@@ -71,7 +71,7 @@ class TransformerFaultyAgent(TransformerAgent):
         eye_mask = torch.eye(self.args.n_agents, device=self.args.device).unsqueeze(0)
         eye_mask = eye_mask.expand(self.args.batch_size, -1, -1)
         self_exclusion_mask = 1.0 - eye_mask
-        if self._faulty and self.faulty_agent_indices:
+        if self.faulty_agent_indices:
             for idx in self.faulty_agent_indices:
                 mask[:, idx] = 0
                 mask[idx, :] = 0
