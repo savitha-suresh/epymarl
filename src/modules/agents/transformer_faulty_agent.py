@@ -32,9 +32,9 @@ class TransformerFaultyAgent(TransformerAgent):
     def reset_fault(self):
         self._faulty = False
         T = self.args.max_seq_len - 1
-        self._faulty_timestep = self.sample_fault_timestep(mean=T/2)
+        self._faulty_timestep = self.sample_fault_timestep(mean=3*(T/4))
         
-    def sample_fault_timestep(self,  mean=None, std=None, spread=0.5):
+    def sample_fault_timestep(self,  mean=None, std=None, spread=0.2):
         """
         Sample a timestep when the agent becomes faulty.
         
