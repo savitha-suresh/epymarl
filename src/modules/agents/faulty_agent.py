@@ -20,16 +20,50 @@ class FaultyAgent(RNNAgent):
         self.faulty_row = self.args.faulty_row
         self.no_op_action = 0
     
+    
     def init_random_fault(self):
         self.faulty_agent_indices = set(random.sample(range(self.args.n_agents), 
                                                       self.args.n_faulty_agents))
+        print(f"Agents {self.faulty_agent_indices} have become network faulty!")
+        #self.faulty_agent_indices = {1}
         self._faulty = False
+        self._faulty_timestep = 0
 
-    def forward(self, inputs, hidden_state):
+    def reset_fault(self):
+        self._faulty = False
+        T = self.args.max_seq_len - 1
+        self._faulty_timestep = self.sample_fault_timestep(mean=T/2)
+        
+
+    def sample_fault_timestep(self,  mean=None, std=None, spread=0.5):
+        """
+        Sample a timestep when the agent becomes faulty.
+        
+        T: total timesteps in the episode
+        mean: desired mean timestep (default T/2)
+        std: standard deviation. If None, it is derived from mean and spread.
+            ~95% of samples fall in [mean*(1-spread), mean*(1+spread)]
+        spread: fraction of mean that defines the 95% interval (default 0.5)
+        
+        Returns: integer timestep in [0, T-1]
+        """
+        T = self.args.max_seq_len - 1
+        if mean is None:
+            mean = T / 2
+
+        if std is None:
+            std = (spread * mean) / 2  # because 95% ≈ ±2σ
+        
+        k = int(random.gauss(mean, std))
+        return max(0, min(T-1, k))
+    
+
+    def forward(self, inputs, hidden_state, t):
         # Check if we should make agents faulty
-        if self.faulty_agent_indices and not self._faulty and random.random() < self.args.fault_prob:
+        # if self.faulty_agent_indices and not self._faulty and random.random() < self.args.fault_prob:
+        #     self._faulty = True
+        if self.faulty_agent_indices and not self._faulty and t >= self._faulty_timestep:
             self._faulty = True
-            print(f"Agents {self.faulty_agent_indices} have become network faulty!")
             
         # Get regular Q-values/logits from parent class
         q, h = super().forward(inputs, hidden_state)

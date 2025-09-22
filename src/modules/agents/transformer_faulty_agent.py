@@ -27,7 +27,35 @@ class TransformerFaultyAgent(TransformerAgent):
                                                       self.args.n_faulty_agents))
         print(f"Agents {self.faulty_agent_indices} have become network faulty!")
         self._faulty = False
+        self._faulty_timestep = 0
 
+    def reset_fault(self):
+        self._faulty = False
+        T = self.args.max_seq_len - 1
+        self._faulty_timestep = self.sample_fault_timestep(mean=T/2)
+        
+    def sample_fault_timestep(self,  mean=None, std=None, spread=0.5):
+        """
+        Sample a timestep when the agent becomes faulty.
+        
+        T: total timesteps in the episode
+        mean: desired mean timestep (default T/2)
+        std: standard deviation. If None, it is derived from mean and spread.
+            ~95% of samples fall in [mean*(1-spread), mean*(1+spread)]
+        spread: fraction of mean that defines the 95% interval (default 0.5)
+        
+        Returns: integer timestep in [0, T-1]
+        """
+        T = self.args.max_seq_len - 1
+        if mean is None:
+            mean = T / 2
+
+        if std is None:
+            std = (spread * mean) / 2  # because 95% ≈ ±2σ
+        
+        k = int(random.gauss(mean, std))
+        return max(0, min(T-1, k))
+    
 
     def generate_agent_labels(self, batch_size):
         agent_labels = torch.ones(batch_size, self.args.n_agents, device=self.args.device)
@@ -51,11 +79,10 @@ class TransformerFaultyAgent(TransformerAgent):
         #mask = mask * self_exclusion_mask
         return mask
 
-    def forward(self, inputs, memory=None, attn_mask=None, actions=None, return_aux_losses=False):
+    def forward(self, inputs, t, memory=None, attn_mask=None, actions=None, return_aux_losses=False):
         # Check if we should make agents faulty
-        if self.faulty_agent_indices and not self._faulty and random.random() < self.args.fault_prob:
+        if self.faulty_agent_indices and not self._faulty and t >= self._faulty_timestep:
             self._faulty = True
-            
             
         # Get regular Q-values/logits from parent class
         if return_aux_losses:
