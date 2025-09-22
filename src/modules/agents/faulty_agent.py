@@ -32,7 +32,7 @@ class FaultyAgent(RNNAgent):
     def reset_fault(self):
         self._faulty = False
         T = self.args.max_seq_len - 1
-        self._faulty_timestep = self.sample_fault_timestep(mean=T/2)
+        self._faulty_timestep = self.sample_fault_timestep(mean=(T/2))
         
 
     def sample_fault_timestep(self,  mean=None, std=None, spread=0.5):
@@ -55,7 +55,8 @@ class FaultyAgent(RNNAgent):
             std = (spread * mean) / 2  # because 95% ≈ ±2σ
         
         k = int(random.gauss(mean, std))
-        return max(0, min(T-1, k))
+       
+        return max(0, k)
     
 
     def forward(self, inputs, hidden_state, t):
