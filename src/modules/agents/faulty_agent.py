@@ -39,17 +39,36 @@ class FaultyAgent(RNNAgent):
     
     def generate_fault_schedule(self):
         """Generate blocks of faulty behavior based on fault percentage"""
-          
-        faulty_timesteps = set()
-        #if random.random() < self.args.fault_prob:
-        faulty_timesteps.update(range(10, 60))
+        total_timesteps = self.args.max_seq_len - 1
+        fault_percentage = getattr(self.args, 'fault_percentage', 20)  # Default 20%
+        num_faulty_steps = int(total_timesteps * fault_percentage / 100)
         
-        faulty_timesteps.update(range(80,120))
-        faulty_timesteps.update(range(200,300))
-        faulty_timesteps.update(range(350,420))
+        # Block parameters
+        min_block_size = getattr(self.args, 'min_fault_block', 5)
+        calculated_max = max(min_block_size, int(total_timesteps * fault_percentage / 200))
+        max_block_size = calculated_max
+        
+        faulty_timesteps = set()
+        current_pos = 0
+        
+        while len(faulty_timesteps) < num_faulty_steps and current_pos < total_timesteps:
+            # Calculate remaining steps needed
+            remaining_steps = num_faulty_steps - len(faulty_timesteps)
+            
+            # Pick random block size (between 0 and max_block_size)
+            # But don't exceed remaining steps or remaining timesteps
+            max_possible_block = min(max_block_size, remaining_steps, total_timesteps - current_pos)
+            block_size = random.randint(0, max_possible_block)
+            
+            # Add the block to faulty_timesteps
+            if block_size > 0:
+                faulty_timesteps.update(range(current_pos, current_pos + block_size))
+                current_pos += block_size
+            
+            # Move to next position (skip one step to create gap)
+            current_pos += 1
         
         return faulty_timesteps
-    
     
     def forward(self, inputs, hidden_state, timestep):
         # Check if current timestep should be faulty
