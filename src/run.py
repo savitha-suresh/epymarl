@@ -87,6 +87,7 @@ def run(_run, _config, _log):
 
 def evaluate_sequential(args, runner):
     for _ in range(args.test_nepisode):
+        runner.mac.agent._faulty = False
         runner.run(test_mode=True)
 
     if args.save_replay:
