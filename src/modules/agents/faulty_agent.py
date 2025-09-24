@@ -3,7 +3,7 @@ import random
 
 class FaultyAgent(RNNAgent):
     """
-    An agent that becomes faulty with a certain probability.
+    An agent that becomes faulty for a specified percentage of time steps.
     Multiple agents can become faulty, specified by args.n_faulty_agents.
     When faulty, these agents will always select action 0.
     
@@ -17,25 +17,67 @@ class FaultyAgent(RNNAgent):
             raise ValueError("Cannot use this network fault with action_fault set to True")
         self._faulty = False
         self.init_random_fault()
+        self.reset()
         self.faulty_row = self.args.faulty_row
         self.no_op_action = 0
+        
     
     def init_random_fault(self):
-        #self.faulty_agent_indices = {1}
-        # self.faulty_agent_indices = set(random.sample(range(self.args.n_agents), 
-        #                                               self.args.n_faulty_agents))
         self.faulty_agent_indices = {int(self.args.fault_idx)}
         print(f"Agents {self.faulty_agent_indices} have become network faulty!")
-        
         self._faulty = False
 
-    
+    def reset(self):
+        self._faulty = False
+        self.timestep = 0
+        self.fault_schedule = self.generate_fault_schedule()
+        print(f"Faulty timesteps: {len(self.fault_schedule)}")
+        
 
-    def forward(self, inputs, hidden_state):
-        # Check if we should make agents faulty
-        if self.faulty_agent_indices and not self._faulty and random.random() < self.args.fault_prob:
-            self._faulty = True
+    
+    def generate_fault_schedule(self):
+        """Generate blocks of faulty behavior based on fault percentage"""
+        total_timesteps = self.args.max_seq_len - 1
             
+        fault_percentage = self.args.fault_percentage
+        num_faulty_steps = int(total_timesteps * fault_percentage / 100)
+        
+        # Block parameters
+        min_block_size = self.args.min_fault_block
+        calculated_max = max(min_block_size, int(total_timesteps * fault_percentage / 200))        
+        max_block_size = calculated_max
+        print("max block size:", max_block_size)
+        faulty_timesteps = set()
+        remaining_faulty_steps = num_faulty_steps
+        
+        while remaining_faulty_steps > 0:
+            # Random block size, but don't exceed remaining steps
+            block_size = min(random.randint(min_block_size, max_block_size), remaining_faulty_steps)
+            # Random start position, ensuring block fits
+            max_start = total_timesteps - block_size
+            if max_start < 0:
+                break
+                
+            start_pos = random.randint(0, max_start)
+            
+            # Check for overlap with existing faulty blocks
+            proposed_block = set(range(start_pos, start_pos + block_size))
+            if not proposed_block.intersection(faulty_timesteps):
+                faulty_timesteps.update(proposed_block)
+                remaining_faulty_steps -= block_size
+            
+            # Safety check to avoid infinite loop
+            if len(faulty_timesteps) + remaining_faulty_steps > total_timesteps:
+                break
+        
+        return faulty_timesteps
+    
+    def forward(self, inputs, hidden_state):
+        # Check if current timestep should be faulty
+        self._faulty = self.timestep in self.fault_schedule
+        
+        # Increment timestep counter
+        self.timestep += 1
             
         # Get regular Q-values/logits from parent class
         q, h = super().forward(inputs, hidden_state)
@@ -62,5 +104,4 @@ class FaultyAgent(RNNAgent):
                         q_index = faulty_idx + (self.args.n_agents*halt_idx)
                         q[q_index, 0] = 1e10
                         q[q_index, 1:] = -1e10
-
         return q, h
