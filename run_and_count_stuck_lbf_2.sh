@@ -6,7 +6,7 @@ rm -rf filtered_json
 rm -rf output_json
 
 # Step 2: Run the simulation
-python -u src/main.py --config=mappo_lbf --env-config=gymma with env_args.time_limit=50 env_args.key="lbforaging:Foraging-2s-10x10-4p-4f-v3" fault_idx=2
+python -u src/main.py --config=mappo_lbf --env-config=gymma with env_args.time_limit=50 env_args.key="lbforaging:Foraging-10x10-4p-4f-v3" fault_idx=2
 
 # Step 3: Find the most recent observation log file
 latest_log=$(ls -t observation_lbforaging:*.log | head -n 1)
