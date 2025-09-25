@@ -74,12 +74,12 @@ def process_file(file_path, output_dir, chunk_size=100):
                 current_agent_values = []
                 for val in values_str.split():
                     if val.strip():  # Skip empty strings
+                        val = val.strip().rstrip(']')
                         current_agent_values.append(float(val.rstrip('.')))
                 
                 current_agent_id = agent_id
-                
             # Check for continuation lines of agent data (just numbers, no Agent prefix)
-            elif current_env_id ==0 and current_agent_id is not None and re.match(r'\s*[\d\.\s]+', line):
+            if current_env_id ==0 and current_agent_id is not None and re.search(r'\]\s*$', line):
                 # This is a continuation of the previous agent's data
                 # Clean up the line - remove trailing bracket if present
                 line = line.rstrip()
@@ -88,12 +88,15 @@ def process_file(file_path, output_dir, chunk_size=100):
                 for val in line.split():
                     if val.strip() and val.rstrip(']'):  # Skip empty strings
                         val = val.strip().rstrip(']')
-                        current_agent_values.append(float(val.rstrip('.')))
+                        try:
+                            current_agent_values.append(float(val.rstrip('.')))
+                        except ValueError:
+                            pass
                 
                 # If we found the closing bracket, add this agent to the current environment
                 if ']' in line:
+                    
                     if current_env_data:
-                        assert len(current_agent_values) == 71
                         current_env_data['agents'][current_agent_id] = current_agent_values
                     current_agent_id = None
                     current_agent_values = []

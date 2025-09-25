@@ -67,9 +67,12 @@ class PPOLearner:
         mask = batch["filled"][:, :-1].float()
         mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1])
         actions = actions[:, :-1]
-        no_op_mask = (actions == self.no_op_action).float().mean(dim=(0, 1))
-        active_agents = (no_op_mask < 0.99).float()  # 1 for learning agents, 0 for no-op agents
+
+        inactive_agents = th.tensor(list(self.mac.agent.faulty_agent_indices), device=batch.device)
+        active_agents = th.ones(self.n_agents, device=batch.device)
+        active_agents[inactive_agents] = 0
         active_agents = active_agents.view(1, 1, -1)
+        
         
         if self.args.standardise_rewards:
             self.rew_ms.update(rewards)
@@ -82,8 +85,8 @@ class PPOLearner:
             # reshape rewards to be of shape (batch_size, episode_length, n_agents)
             rewards = rewards.expand(-1, -1, self.n_agents)
 
-        rewards = self.stuck_penalty.shape_rewards(rewards, positions)
-        rewards = self.osc_penalty.shape_rewards(rewards, positions)
+        # rewards = self.stuck_penalty.shape_rewards(rewards, positions)
+        # rewards = self.osc_penalty.shape_rewards(rewards, positions)
         mask = mask.repeat(1, 1, self.n_agents)
         #mask = mask * active_agents
         critic_mask = mask.clone()
