@@ -51,17 +51,12 @@ class TransformerFaultyAgent(TransformerAgent):
         #mask = mask * self_exclusion_mask
         return mask
 
-    def forward(self, inputs, memory=None, attn_mask=None, actions=None, return_aux_losses=False):
+    def forward(self, inputs, memory=None, attn_mask=None):
         # Check if we should make agents faulty
         if self.faulty_agent_indices and not self._faulty and random.random() < self.args.fault_prob:
             self._faulty = True
             
-            
-        # Get regular Q-values/logits from parent class
-        if return_aux_losses:
-            q, h, aux_losses = super().forward(inputs, memory=memory, attn_mask=attn_mask, actions=actions, return_aux_losses=return_aux_losses)
-        else:
-            q, h = super().forward(inputs, memory=memory, attn_mask=attn_mask, actions=actions, return_aux_losses=return_aux_losses)
+        q, h = super().forward(inputs, memory=memory, attn_mask=attn_mask)
         if self.faulty_agent_indices and self._faulty:
             # For interleaved data, faulty agents appear every n_agents rows
             for faulty_idx in self.faulty_agent_indices:
@@ -84,6 +79,5 @@ class TransformerFaultyAgent(TransformerAgent):
                         q_index = faulty_idx + (self.args.n_agents*halt_idx)
                         q[q_index, :, 0] = 1e10
                         q[q_index, :, 1:] = -1e10
-        if return_aux_losses:
-            return q, h, aux_losses
+
         return q, h

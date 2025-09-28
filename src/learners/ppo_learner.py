@@ -92,7 +92,7 @@ class PPOLearner:
         self.old_mac.init_hidden(batch.batch_size)
         for t in range(0, batch.max_seq_length - 1, self.segment_len):
             t_end = min(t + self.segment_len, batch.max_seq_length - 1)
-            agent_outs = self.old_mac.forward(batch, t=t, t_end=t_end, actions=actions, return_aux_losses=False)
+            agent_outs = self.old_mac.forward(batch, t=t, t_end=t_end)
             old_mac_out.append(agent_outs)
         old_mac_out = th.cat(old_mac_out, dim=1)  # Concat over time
         old_pi = old_mac_out
@@ -102,13 +102,13 @@ class PPOLearner:
         old_log_pi_taken = th.log(old_pi_taken + 1e-10)
         for k in range(self.args.epochs):
             mac_out = []
-            aux_losses = []
+            
             self.mac.init_hidden(batch.batch_size)
             for t in range(0, batch.max_seq_length - 1, self.segment_len):
                 t_end = min(t + self.segment_len, batch.max_seq_length - 1)
-                agent_outs, aux_loss = self.mac.forward(batch, t=t, t_end=t_end, actions=actions, return_aux_losses=True)
+                agent_outs = self.mac.forward(batch, t=t, t_end=t_end)
                 mac_out.append(agent_outs)
-                aux_losses.append(aux_loss)
+                
             mac_out = th.cat(mac_out, dim=1)  # Concat over time
 
             pi = mac_out
@@ -141,10 +141,10 @@ class PPOLearner:
                 ).sum()
                 / mask.sum()
             )
-            total_loss = pg_loss + 0.05 * aux_loss
+            
             
             self.agent_optimiser.zero_grad()
-            total_loss.backward()
+            pg_loss.backward()
             grad_norm = th.nn.utils.clip_grad_norm_(
                 self.agent_params, self.args.grad_norm_clip
             )
