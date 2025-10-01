@@ -48,7 +48,7 @@ class TransformerFaultyAgent(TransformerAgent):
                 mask[:, idx] = 0
                 mask[idx, :] = 0
         mask =  mask.unsqueeze(0).expand(self.args.batch_size, -1, -1)
-        #mask = mask * self_exclusion_mask
+        mask = mask * self_exclusion_mask
         return mask
 
     def forward(self, inputs, memory=None, attn_mask=None, actions=None, return_aux_losses=False):

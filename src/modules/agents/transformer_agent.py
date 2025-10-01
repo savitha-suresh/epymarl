@@ -403,7 +403,7 @@ class TransformerAgent(nn.Module):
         agent_labels = self.generate_agent_labels(self.args.batch_size)
         emb, cross_attn_mask, aux_loss = self.similarity_net(inputs, agent_labels)
         
-        #cross_attn_mask = self.build_cross_attn_mask()
+        cross_attn_mask = self.build_cross_attn_mask()
         #print("Cross_attention mask shape:", cross_attn_mask)
         # Process inputs
         x = F.relu(self.fc1(inputs))
