@@ -50,12 +50,15 @@ class FaultyAgent(RNNAgent):
         max_block_size = calculated_max
         #print("max block size:", max_block_size)
         faulty_timesteps = set()
+        block_miss_count = 0 
         remaining_faulty_steps = num_faulty_steps
         
         while remaining_faulty_steps > 0:
+            #print(f"remaining time {remaining_faulty_steps}")
             # Random block size, but don't exceed remaining steps
             block_size = min(random.randint(min_block_size, max_block_size), remaining_faulty_steps)
             # Random start position, ensuring block fits
+            #print(block_size)
             max_start = total_timesteps - block_size
             if max_start < 0:
                 break
@@ -67,6 +70,10 @@ class FaultyAgent(RNNAgent):
             if not proposed_block.intersection(faulty_timesteps):
                 faulty_timesteps.update(proposed_block)
                 remaining_faulty_steps -= block_size
+            else:
+                block_miss_count+=1
+            if block_miss_count > 10:
+                break
             
             # Safety check to avoid infinite loop
             if len(faulty_timesteps) + remaining_faulty_steps > total_timesteps:
