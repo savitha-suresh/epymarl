@@ -75,6 +75,7 @@ class TransformerFaultyAgent(TransformerAgent):
         #print("max block size:", max_block_size)
         faulty_timesteps = set()
         remaining_faulty_steps = num_faulty_steps
+        block_miss_count = 0
         
         while remaining_faulty_steps > 0:
             # Random block size, but don't exceed remaining steps
@@ -91,6 +92,10 @@ class TransformerFaultyAgent(TransformerAgent):
             if not proposed_block.intersection(faulty_timesteps):
                 faulty_timesteps.update(proposed_block)
                 remaining_faulty_steps -= block_size
+            else:
+                block_miss_count+=1
+            if block_miss_count>10:
+                break
             
             # Safety check to avoid infinite loop
             if len(faulty_timesteps) + remaining_faulty_steps > total_timesteps:
