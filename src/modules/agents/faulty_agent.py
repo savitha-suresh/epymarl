@@ -33,7 +33,7 @@ class FaultyAgent(RNNAgent):
         self._faulty = False
         self.timestep = 0
         self.fault_schedule = self.generate_fault_schedule()
-        print(f"Faulty timesteps: {len(self.fault_schedule)}")
+        #print(f"Faulty timesteps: {len(self.fault_schedule)}")
         
 
     
@@ -48,7 +48,7 @@ class FaultyAgent(RNNAgent):
         min_block_size = self.args.min_fault_block
         calculated_max = max(min_block_size, int(total_timesteps * fault_percentage / 200))        
         max_block_size = calculated_max
-        print("max block size:", max_block_size)
+        #print("max block size:", max_block_size)
         faulty_timesteps = set()
         remaining_faulty_steps = num_faulty_steps
         
