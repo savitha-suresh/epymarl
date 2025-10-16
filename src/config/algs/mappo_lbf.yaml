@@ -49,6 +49,5 @@ n_heads: 1
 n_layers: 1
 return_aux_losses: True
 random_start: True
-fault_percentage: 60
-min_fault_block: 20
+num_faulty_bins: 5
 random_start: True

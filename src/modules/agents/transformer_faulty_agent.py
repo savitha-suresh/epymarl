@@ -62,51 +62,43 @@ class TransformerFaultyAgent(TransformerAgent):
         
 
     def generate_fault_schedule(self):
-        """Generate blocks of faulty behavior based on fault percentage"""
-        total_timesteps = self.args.max_seq_len - 1
-            
-        fault_percentage = self.args.fault_percentage
-        num_faulty_steps = int(total_timesteps * fault_percentage / 100)
+        """Generate blocks of faulty behavior based on fixed bin selection"""
         
-        # Block parameters
-        min_block_size = self.args.min_fault_block
-        calculated_max = max(min_block_size, int(total_timesteps * fault_percentage / 200))        
-        max_block_size = calculated_max
-        #print("max block size:", max_block_size)
+        
         faulty_timesteps = set()
-        remaining_faulty_steps = num_faulty_steps
-        block_miss_count = 0
+        faulty_timesteps.update(range(0, 10))
+        #faulty_timesteps.update(range(20, 30))
+        faulty_timesteps.update(range(40, 50))
         
-        while remaining_faulty_steps > 0:
-            # Random block size, but don't exceed remaining steps
-            block_size = min(random.randint(min_block_size, max_block_size), remaining_faulty_steps)
-            # Random start position, ensuring block fits
-            max_start = total_timesteps - block_size
-            if max_start < 0:
-                break
-                
-            start_pos = random.randint(0, max_start)
-            
-            # Check for overlap with existing faulty blocks
-            proposed_block = set(range(start_pos, start_pos + block_size))
-            if not proposed_block.intersection(faulty_timesteps):
-                faulty_timesteps.update(proposed_block)
-                remaining_faulty_steps -= block_size
-            else:
-                block_miss_count+=1
-            if block_miss_count>10:
-                break
-            
-            # Safety check to avoid infinite loop
-            if len(faulty_timesteps) + remaining_faulty_steps > total_timesteps:
-                break
+        # total_timesteps = self.args.max_seq_len - 1
         
-        return faulty_timesteps
+        # # Determine bin size and number of bins based on total timesteps
+       
+        # bin_size = 10
+        # num_bins = 5
+        
+        # # Number of bins to select (from args)
+        # num_bins_to_select = self.args.num_faulty_bins  # or whatever your arg name is
+        
+        # # Make sure we don't select more bins than available
+        # num_bins_to_select = min(num_bins_to_select, num_bins)
+        
+        # # Randomly select bins without replacement
+        # selected_bins = random.sample(range(num_bins), num_bins_to_select)
+        
+        # # Add all timesteps from selected bins to faulty_timesteps
+        # for bin_idx in selected_bins:
+        #     bin_start = bin_idx * bin_size
+        #     bin_end = min(bin_start + bin_size, total_timesteps + 1)  # +1 because range is exclusive
+        #     faulty_timesteps.update(set(range(bin_start, bin_end)))
+        
+        # # Convert to sorted list and return as set
+        # return faulty_timesteps
     
     def forward(self, inputs, memory=None, attn_mask=None, actions=None, return_aux_losses=False, timestep=0):
         # Check if current timestep should be faulty
         self._faulty = timestep in self.fault_schedule
- 
+        #print(f"timestep {timestep} faulty {self._faulty}")
         # Get regular Q-values/logits from parent class
         if return_aux_losses:
             q, h, aux_losses = super().forward(inputs, memory=memory, attn_mask=attn_mask, actions=actions, return_aux_losses=return_aux_losses)
