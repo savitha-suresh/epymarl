@@ -39,47 +39,51 @@ class FaultyAgent(RNNAgent):
     
     def generate_fault_schedule(self):
         """Generate blocks of faulty behavior based on fault percentage"""
-        total_timesteps = self.args.max_seq_len - 1
-            
-        fault_percentage = self.args.fault_percentage
-        num_faulty_steps = int(total_timesteps * fault_percentage / 100)
-        
-        # Block parameters
-        min_block_size = self.args.min_fault_block
-        calculated_max = max(min_block_size, int(total_timesteps * fault_percentage / 200))        
-        max_block_size = calculated_max
-        #print("max block size:", max_block_size)
         faulty_timesteps = set()
-        block_miss_count = 0 
-        remaining_faulty_steps = num_faulty_steps
+        faulty_timesteps.update(range(0, 10))
+        #faulty_timesteps.update(range(20, 30))
+        faulty_timesteps.update(range(40, 50))
+        # total_timesteps = self.args.max_seq_len - 1
+            
+        # fault_percentage = self.args.fault_percentage
+        # num_faulty_steps = int(total_timesteps * fault_percentage / 100)
         
-        while remaining_faulty_steps > 0:
-            #print(f"remaining time {remaining_faulty_steps}")
-            # Random block size, but don't exceed remaining steps
-            block_size = min(random.randint(min_block_size, max_block_size), remaining_faulty_steps)
-            # Random start position, ensuring block fits
-            #print(block_size)
-            max_start = total_timesteps - block_size
-            if max_start < 0:
-                break
+        # # Block parameters
+        # min_block_size = self.args.min_fault_block
+        # calculated_max = max(min_block_size, int(total_timesteps * fault_percentage / 200))        
+        # max_block_size = calculated_max
+        # #print("max block size:", max_block_size)
+        # faulty_timesteps = set()
+        # block_miss_count = 0 
+        # remaining_faulty_steps = num_faulty_steps
+        
+        # while remaining_faulty_steps > 0:
+        #     #print(f"remaining time {remaining_faulty_steps}")
+        #     # Random block size, but don't exceed remaining steps
+        #     block_size = min(random.randint(min_block_size, max_block_size), remaining_faulty_steps)
+        #     # Random start position, ensuring block fits
+        #     #print(block_size)
+        #     max_start = total_timesteps - block_size
+        #     if max_start < 0:
+        #         break
                 
-            start_pos = random.randint(0, max_start)
+        #     start_pos = random.randint(0, max_start)
             
-            # Check for overlap with existing faulty blocks
-            proposed_block = set(range(start_pos, start_pos + block_size))
-            if not proposed_block.intersection(faulty_timesteps):
-                faulty_timesteps.update(proposed_block)
-                remaining_faulty_steps -= block_size
-            else:
-                block_miss_count+=1
-            if block_miss_count > 10:
-                break
+        #     # Check for overlap with existing faulty blocks
+        #     proposed_block = set(range(start_pos, start_pos + block_size))
+        #     if not proposed_block.intersection(faulty_timesteps):
+        #         faulty_timesteps.update(proposed_block)
+        #         remaining_faulty_steps -= block_size
+        #     else:
+        #         block_miss_count+=1
+        #     if block_miss_count > 10:
+        #         break
             
-            # Safety check to avoid infinite loop
-            if len(faulty_timesteps) + remaining_faulty_steps > total_timesteps:
-                break
+        #     # Safety check to avoid infinite loop
+        #     if len(faulty_timesteps) + remaining_faulty_steps > total_timesteps:
+        #         break
         
-        return faulty_timesteps
+        # return faulty_timesteps
     
     def forward(self, inputs, hidden_state, timestep):
         # Check if current timestep should be faulty
