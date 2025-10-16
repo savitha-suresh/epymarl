@@ -93,7 +93,7 @@ class TransformerFaultyAgent(TransformerAgent):
         #     faulty_timesteps.update(set(range(bin_start, bin_end)))
         
         # # Convert to sorted list and return as set
-        # return faulty_timesteps
+        return faulty_timesteps
     
     def forward(self, inputs, memory=None, attn_mask=None, actions=None, return_aux_losses=False, timestep=0):
         # Check if current timestep should be faulty
