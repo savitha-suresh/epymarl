@@ -43,6 +43,7 @@ class FaultyAgent(RNNAgent):
         faulty_timesteps.update(range(0, 10))
         #faulty_timesteps.update(range(20, 30))
         faulty_timesteps.update(range(40, 50))
+        return faulty_timesteps
         # total_timesteps = self.args.max_seq_len - 1
             
         # fault_percentage = self.args.fault_percentage
