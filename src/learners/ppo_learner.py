@@ -227,9 +227,23 @@ class PPOLearner:
 
         # Apply agent mask
         masked_td_error = td_error * mask  # (batch_size, episode_length, n_agents)
+        huber_delta = 1.0 
+        
+        # Calculate Huber loss L(E) element-wise
+        td_error_abs = th.abs(td_error)
+        
+        # Huber Loss L(E): quadratic if |E| < delta, linear otherwise. [5]
+        huber_loss_elements = th.where(
+            td_error_abs < huber_delta,
+            0.5 * td_error**2,
+            huber_delta * (td_error_abs - 0.5 * huber_delta)
+        )
+        
+        # Apply agent mask to the loss elements
+        masked_huber_loss = huber_loss_elements * mask
 
-        # Compute loss only for active agents
-        loss = (masked_td_error**2).sum() / (mask).sum()
+        # Compute mean loss only for active agents
+        loss = masked_huber_loss.sum() / (mask).sum() # <-- MODIFIED
 
 
         self.critic_optimiser.zero_grad()

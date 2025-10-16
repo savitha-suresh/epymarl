@@ -3,6 +3,7 @@
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.utils.parametrizations import spectral_norm
 
 
 class CentralVCritic(nn.Module):
@@ -16,16 +17,32 @@ class CentralVCritic(nn.Module):
         input_shape = self._get_input_shape(scheme)
         self.output_type = "v"
 
-        # Set up network layers
-        self.fc1 = nn.Linear(input_shape, args.hidden_dim)
-        self.fc2 = nn.Linear(args.hidden_dim, args.hidden_dim)
+        
+        # Set up network layers. Apply Spectral Normalization (SN) to the shared backbone.
+        # SN stabilizes weights against volatile gradients (large TD errors). [3]
+        self.fc1 = spectral_norm(nn.Linear(input_shape, args.hidden_dim))
+        self.ln1 = nn.LayerNorm(args.hidden_dim) # <-- NEW: Layer Norm for stability [1]
+        
+        self.fc2 = spectral_norm(nn.Linear(args.hidden_dim, args.hidden_dim))
+        self.ln2 = nn.LayerNorm(args.hidden_dim) # <-- NEW: Layer Norm for stability [1]
+        
+        self.normal_head = nn.Linear(args.hidden_dim, 1)
+        self.faulty_head = nn.Linear(args.hidden_dim, 1)
+
+        # Optional gating if you want smoother interpolation
         self.fc3 = nn.Linear(args.hidden_dim, 1)
 
     def forward(self, batch, t=None, faulty_indices={}):
-        inputs, bs, max_t = self._build_inputs(batch, t=t, faulty_indices=faulty_indices)
-        x = F.relu(self.fc1(inputs))
-        x = F.relu(self.fc2(x))
-        q = self.fc3(x)
+        inputs, bs, max_t, fault_mask = self._build_inputs(batch, t=t, faulty_indices=faulty_indices)
+        x = self.fc1(inputs)
+        x = F.relu(self.ln1(x)) # <-- MODIFIED
+        
+        x = self.fc2(x)
+        x = F.relu(self.ln2(x)) # <-- MODIFIED
+        
+        v_normal = self.normal_head(x)
+        v_faulty = self.faulty_head(x)
+        q = fault_mask * v_normal + (1 - fault_mask) * v_faulty
         return q
 
     def _build_inputs(self, batch, t=None, faulty_indices={}):
@@ -61,7 +78,7 @@ class CentralVCritic(nn.Module):
 
 
         inputs = th.cat(inputs, dim=-1)
-        return inputs, bs, max_t
+        return inputs, bs, max_t, fault_mask
 
     def _get_input_shape(self, scheme):
         # state
