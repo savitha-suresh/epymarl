@@ -10,7 +10,7 @@ batch_size_run: 10
 batch_size: 10
 
   # update the target network every {} training steps
-target_update_interval_or_tau: 0.01
+target_update_interval_or_tau: 0.001
 
 lr: 0.0003
 hidden_dim: 128
@@ -29,6 +29,7 @@ q_nstep: 5 # 1 corresponds to normal r + gammaV
 critic_type: "cv_critic"
 epochs: 4
 eps_clip: 0.2
+grad_norm_clip: 1
 name: "mappo"
 
 t_max: 20050000
@@ -49,5 +50,4 @@ n_heads: 1
 n_layers: 1
 return_aux_losses: True
 random_start: True
-num_faulty_bins: 5
-random_start: True
+num_faulty_bins: 1

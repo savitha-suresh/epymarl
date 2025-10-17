@@ -11,6 +11,7 @@ from envs import register_smac, register_smacv2
 from itertools import islice
 
 import random
+import torch
 
 # Based (very) heavily on SubprocVecEnv from OpenAI Baselines
 # https://github.com/openai/baselines/blob/master/baselines/common/vec_env/subproc_vec_env.py
@@ -134,7 +135,10 @@ class ParallelRunner:
             pre_transition_data["obs"].append(data["obs"])
 
         self.batch.update(pre_transition_data, ts=0)
-
+        self.batch.data.transition_data["context"] = torch.zeros(
+            (self.batch.batch_size, self.args.max_seq_len, 2+self.args.n_agents),
+            dtype=torch.float32, device=self.args.device
+        )
         self.t = 0
         self.env_steps_this_run = 0
     

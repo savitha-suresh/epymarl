@@ -366,7 +366,7 @@ class TransformerAgent(nn.Module):
             ) for _ in range(args.n_layers)
         ])
         
-        self.mem_len = 250
+        self.mem_len = 400
         self.output_norm = nn.LayerNorm(args.hidden_dim)
         self.fc2 = nn.Linear(args.hidden_dim, args.n_actions)
         self.memories = [None for _ in range(args.n_layers)]

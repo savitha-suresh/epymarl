@@ -118,6 +118,7 @@ def run_sequential(args, logger):
             "dtype": th.int,
         },
         "terminated": {"vshape": (1,), "dtype": th.uint8},
+        "context": {"vshape": args.n_agents+2}
     }
     # For individual rewards in gymmai reward is of shape (1, n_agents)
     if args.common_reward:

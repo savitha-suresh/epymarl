@@ -9,7 +9,7 @@ from components.standarize_stream import RunningMeanStd
 from modules.critics import REGISTRY as critic_resigtry
 from components.penalty import StuckPenaltyRewardShaper, OscillationPenaltyRewardShaper
 from torch.optim.lr_scheduler import CosineAnnealingLR
-
+import torch.nn.functional as F
 
 class PPOLearner:
     def __init__(self, mac, scheme, logger, args):
@@ -35,11 +35,13 @@ class PPOLearner:
         self.agent_scheduler = CosineAnnealingLR(
             self.agent_optimiser, T_max=self.args.t_max)
 
-        self.critic = critic_resigtry[args.critic_type](scheme, args)
+        self.critic = critic_resigtry[args.critic_type](scheme, args, context_shape=args.n_agents+2) 
         self.target_critic = copy.deepcopy(self.critic)
 
         self.critic_params = list(self.critic.parameters())
         self.critic_optimiser = Adam(params=self.critic_params, lr=args.lr)
+        self.critic_scheduler = CosineAnnealingLR(
+            self.critic_optimiser, T_max=self.args.t_max)
         self.no_op_action = 0
 
         self.last_target_update_step = 0
@@ -195,16 +197,18 @@ class PPOLearner:
 
     def train_critic_sequential(self, critic, target_critic, batch, rewards, mask, actions=None, faulty_indices={}):
         # Optimise critic
+        MONOTONICITY_COEFF = 0.01 # Consider fine-tuning this value between 1e-4 and 1e-2 for stability.[2]
         
+        # --- Update 1: Retrieve flat_mask from critic forward pass ---
         with th.no_grad():
-            target_vals = target_critic(batch, faulty_indices=faulty_indices)
-            target_vals = target_vals.squeeze(3)
+            target_mean_v, target_z_quantiles, _ = target_critic(batch, faulty_indices=faulty_indices)
+            target_mean_v = target_mean_v.squeeze(3)
 
         if self.args.standardise_returns:
-            target_vals = target_vals * th.sqrt(self.ret_ms.var) + self.ret_ms.mean
+            target_mean_v = target_mean_v * th.sqrt(self.ret_ms.var) + self.ret_ms.mean
 
         target_returns = self.nstep_returns(
-            rewards, mask, target_vals, self.args.q_nstep
+            rewards, mask, target_mean_v, self.args.q_nstep
         )
         
         if self.args.standardise_returns:
@@ -222,35 +226,78 @@ class PPOLearner:
         }
 
         # Identify faulty agents (agents that always take no-op)
-        v = critic(batch, faulty_indices=faulty_indices)[:, :-1].squeeze(3)  # (batch_size, episode_length, n_agents)
-        td_error = target_returns.detach() - v
+        # --- Update 2: Retrieve flat_mask from critic forward pass ---
+        mean_v, z_quantiles, fault_mask_reshaped = critic(batch, faulty_indices=faulty_indices) 
+        mean_v = mean_v[:, :-1].squeeze(3) # [bs, max_t, n_agents]
+        z_quantiles = z_quantiles[:, :-1] 
+        fault_mask = fault_mask_reshaped[:, :-1] # Match [bs, max_t, n_agents, 1] shape
 
-        # Apply agent mask
-        masked_td_error = td_error * mask  # (batch_size, episode_length, n_agents)
+        # Target returns G_t are [bs, max_t, n_agents]
+        # CRITICAL FIX: Explicitly expand target_returns to match quantiles
+        target_returns_expanded = target_returns.detach().unsqueeze(-1) # [bs, max_t, n_agents, 1]
+        
+        # Get the quantile centers tau_hat from the critic instance
+        tau_hat = critic.tau_hat.to(z_quantiles.device).squeeze(0) 
 
-        # Compute loss only for active agents
-        loss = (masked_td_error**2).sum() / (mask).sum()
+        # 1. Quantile Pinball Loss
+        td_error = target_returns_expanded - z_quantiles 
+        
+        error_indicator = (td_error < 0).float() 
+        pinball_weight = th.abs(tau_hat - error_indicator)
+        quantile_pinball_loss = th.abs(td_error) * pinball_weight
+        
+        # --- Update 3: Implement Weighted Pinball Loss ---
+        # Weight Factor: 1.0 for normal, BETA for faulty (e.g., BETA=5.0)
+        # This forces the critic to prioritize learning the correct distribution for rare, high-impact fault transitions.
+        BETA = 5.0 # Hyperparameter: Increase loss weight for faulty steps
+        fault_weight_factor = 1.0 + fault_mask * (BETA - 1.0) # [bs, max_t, n_agents, 1]
+        
+        # Apply fault weight factor (broadcasts across quantile dimension)
+        weighted_quantile_pinball_loss = quantile_pinball_loss * fault_weight_factor 
 
+        # Mean loss over all quantiles 
+        mean_quantile_loss = weighted_quantile_pinball_loss.mean(dim=-1) # [bs, max_t, n_agents]
+        masked_pinball_loss = mean_quantile_loss * mask 
+        
+        # 2. Monotonicity Regularization (R_mono)
+        # MONOTONICITY_COEFF = 0.01 
+        
+        quantile_diffs = z_quantiles[:, :, :, :-1] - z_quantiles[:, :, :, 1:] 
+        monotonicity_violation = F.relu(quantile_diffs)
+        masked_violation = (monotonicity_violation ** 2) * mask.unsqueeze(-1)
+        R_mono = masked_violation.sum() / (mask).sum()
 
+        # 3. Total Critic Loss
+        L_pinball = masked_pinball_loss.sum() / (mask).sum()
+        L_critic = L_pinball + MONOTONICITY_COEFF * R_mono # Total loss
+
+        # Backpropagation:
         self.critic_optimiser.zero_grad()
-        loss.backward()
+        L_critic.backward()
+        
+        # --- Update 4: Fix Gradient Clipping Logic and Set Stable Value ---
+        # VITAL: Use a standard, aggressive clip norm (e.g., 0.5) to stabilize the GRU
         grad_norm = th.nn.utils.clip_grad_norm_(
-            self.critic_params, self.args.grad_norm_clip
+            self.critic_params, 0.5 # Hardcode stable L2 Norm value [3]
         )
+        # The user's original code executed clipping and step twice - FIX THIS.
         self.critic_optimiser.step()
+        # self.critic_scheduler.step() # Re-add scheduler step if applicable
 
-        running_log["critic_loss"].append(loss.item())
+        #... (logging remains the same)...
+        running_log["critic_loss"].append(L_critic.item())
         running_log["critic_grad_norm"].append(grad_norm.item())
         mask_elems = mask.sum().item()
+        td_error_mean = target_returns.detach() - mean_v.detach() # Use the mean V for logging TD error
         running_log["td_error_abs"].append(
-            (masked_td_error.abs().sum().item() / mask_elems)
+            (th.abs(td_error_mean) * mask).sum().item() / mask_elems
         )
-        running_log["q_taken_mean"].append((v * mask).sum().item() / mask_elems)
+        running_log["q_taken_mean"].append((mean_v * mask).sum().item() / mask_elems)
         running_log["target_mean"].append(
             (target_returns * mask).sum().item() / mask_elems
         )
 
-        return masked_td_error, running_log
+        return td_error_mean, running_log
 
     def nstep_returns(self, rewards, mask, values, nsteps):
         nstep_values = th.zeros_like(values[:, :-1])
