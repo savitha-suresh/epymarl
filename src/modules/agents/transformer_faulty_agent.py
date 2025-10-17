@@ -46,12 +46,12 @@ class TransformerFaultyAgent(TransformerAgent):
         eye_mask = torch.eye(self.args.n_agents, device=self.args.device).unsqueeze(0)
         eye_mask = eye_mask.expand(self.args.batch_size, -1, -1)
         self_exclusion_mask = 1.0 - eye_mask
-        if self.faulty_agent_indices:
+        if self._faulty and self.faulty_agent_indices:
             for idx in self.faulty_agent_indices:
                 mask[:, idx] = 0
                 mask[idx, :] = 0
         mask =  mask.unsqueeze(0).expand(self.args.batch_size, -1, -1)
-        mask = mask * self_exclusion_mask
+        #mask = mask * self_exclusion_mask
         return mask
 
     def reset(self):
