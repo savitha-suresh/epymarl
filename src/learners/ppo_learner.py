@@ -197,8 +197,9 @@ class PPOLearner:
 
     def train_critic_sequential(self, critic, target_critic, batch, rewards, mask, actions=None, faulty_indices={}):
         # Optimise critic
-        MONOTONICITY_COEFF = 0.01 # Consider fine-tuning this value between 1e-4 and 1e-2 for stability.[2]
-        
+        MONOTONICITY_COEFF = 0.01 
+        CONSERVATIVE_COEFF = 0.005 # NEW: Conservative Regularization Factor (Tune between 1e-4 and 1e-2)
+        BETA = 5.0
         # --- Update 1: Retrieve flat_mask from critic forward pass ---
         with th.no_grad():
             target_mean_v, target_z_quantiles, _ = target_critic(batch, faulty_indices=faulty_indices)
@@ -230,59 +231,61 @@ class PPOLearner:
         mean_v, z_quantiles, fault_mask_reshaped = critic(batch, faulty_indices=faulty_indices) 
         mean_v = mean_v[:, :-1].squeeze(3) # [bs, max_t, n_agents]
         z_quantiles = z_quantiles[:, :-1] 
-        fault_mask = fault_mask_reshaped[:, :-1] # Match [bs, max_t, n_agents, 1] shape
+        fault_mask = fault_mask_reshaped[:, :-1] # [bs, max_t, n_agents, 1]
 
         # Target returns G_t are [bs, max_t, n_agents]
-        # CRITICAL FIX: Explicitly expand target_returns to match quantiles
         target_returns_expanded = target_returns.detach().unsqueeze(-1) # [bs, max_t, n_agents, 1]
-        
-        # Get the quantile centers tau_hat from the critic instance
         tau_hat = critic.tau_hat.to(z_quantiles.device).squeeze(0) 
 
-        # 1. Quantile Pinball Loss
+        # 1. Quantile Pinball Loss (L_pinball)
         td_error = target_returns_expanded - z_quantiles 
-        
         error_indicator = (td_error < 0).float() 
         pinball_weight = th.abs(tau_hat - error_indicator)
         quantile_pinball_loss = th.abs(td_error) * pinball_weight
         
-        # --- Update 3: Implement Weighted Pinball Loss ---
-        # Weight Factor: 1.0 for normal, BETA for faulty (e.g., BETA=5.0)
-        # This forces the critic to prioritize learning the correct distribution for rare, high-impact fault transitions.
-        BETA = 5.0 # Hyperparameter: Increase loss weight for faulty steps
-        fault_weight_factor = 1.0 + fault_mask * (BETA - 1.0) # [bs, max_t, n_agents, 1]
-        
-        # Apply fault weight factor (broadcasts across quantile dimension)
+        # Apply fault weight factor 
+        fault_weight_factor = 1.0 + fault_mask * (BETA - 1.0) 
         weighted_quantile_pinball_loss = quantile_pinball_loss * fault_weight_factor 
-
-        # Mean loss over all quantiles 
         mean_quantile_loss = weighted_quantile_pinball_loss.mean(dim=-1) # [bs, max_t, n_agents]
         masked_pinball_loss = mean_quantile_loss * mask 
         
         # 2. Monotonicity Regularization (R_mono)
-        # MONOTONICITY_COEFF = 0.01 
-        
         quantile_diffs = z_quantiles[:, :, :, :-1] - z_quantiles[:, :, :, 1:] 
         monotonicity_violation = F.relu(quantile_diffs)
         masked_violation = (monotonicity_violation ** 2) * mask.unsqueeze(-1)
         R_mono = masked_violation.sum() / (mask).sum()
 
-        # 3. Total Critic Loss
-        L_pinball = masked_pinball_loss.sum() / (mask).sum()
-        L_critic = L_pinball + MONOTONICITY_COEFF * R_mono # Total loss
+        # --- NEW: 3. Conservative Distributional Regularization (R_conservative) ---
+        # Goal: Penalize the predicted quantiles if they are too high relative to a known baseline (e.g., zero).
+        # We penalize the sum of all predicted quantiles for being positive.
+        # This acts as a structural lower bound regularization.
+        
+        # Only penalize positive predicted quantiles (Q-values)
+        positive_quantiles = F.relu(z_quantiles) # [bs, max_t, n_agents, n_quantiles]
+        
+        # Apply mask and average over all dimensions
+        # R_conservative aims to drive optimistic predictions down.
+        masked_conservative_penalty = positive_quantiles * mask.unsqueeze(-1)
+        
+        R_conservative = masked_conservative_penalty.sum() / (mask).sum()
 
-        # Backpropagation:
+        # 4. Total Critic Loss
+        L_pinball = masked_pinball_loss.sum() / (mask).sum()
+        
+        # Total loss now includes the regularization terms
+        L_critic = L_pinball + (MONOTONICITY_COEFF * R_mono) + (CONSERVATIVE_COEFF * R_conservative) # Total loss
+
+        # Backpropagation (Crucial Stability Check)
         self.critic_optimiser.zero_grad()
         L_critic.backward()
         
-        # --- Update 4: Fix Gradient Clipping Logic and Set Stable Value ---
-        # VITAL: Use a standard, aggressive clip norm (e.g., 0.5) to stabilize the GRU
+        # VITAL: Ensure aggressive Gradient Clipping (0.5 is a highly stable norm for PPO/Actor-Critic) [1]
         grad_norm = th.nn.utils.clip_grad_norm_(
-            self.critic_params, 0.5 # Hardcode stable L2 Norm value [3]
+            self.critic_params, 0.5 
         )
-        # The user's original code executed clipping and step twice - FIX THIS.
+        # Ensure step is only called once.
         self.critic_optimiser.step()
-        # self.critic_scheduler.step() # Re-add scheduler step if applicable
+        self.critic_scheduler.step() # Re-add scheduler step if applicable
 
         #... (logging remains the same)...
         running_log["critic_loss"].append(L_critic.item())
