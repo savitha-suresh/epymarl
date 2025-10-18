@@ -3,6 +3,7 @@ from .transformer_agent import TransformerAgent
 import random
 import torch
 
+
 class TransformerFaultyAgent(TransformerAgent):
     """
     An agent that becomes faulty for a specified percentage of time steps.
@@ -19,7 +20,7 @@ class TransformerFaultyAgent(TransformerAgent):
             raise ValueError("Cannot use this network fault with action_fault set to True")
         self._faulty = False
         self.init_random_fault()
-        self.reset()
+        self.reset(current_time_step=0)
         self.faulty_row = self.args.faulty_row
         self.no_op_action = 0
         
@@ -43,57 +44,50 @@ class TransformerFaultyAgent(TransformerAgent):
         # Create a mask that allows agents to attend to each other
         # This is a square mask of size n_agents x n_agents
         mask = torch.ones(self.args.n_agents, self.args.n_agents, device=self.args.device)
-        # eye_mask = torch.eye(self.args.n_agents, device=self.args.device).unsqueeze(0)
-        # eye_mask = eye_mask.expand(self.args.batch_size, -1, -1)
-        # self_exclusion_mask = 1.0 - eye_mask
-        # if self._faulty and self.faulty_agent_indices:
-        #     for idx in self.faulty_agent_indices:
-        #         mask[:, idx] = 0
-        #         mask[idx, :] = 0
+        eye_mask = torch.eye(self.args.n_agents, device=self.args.device).unsqueeze(0)
+        eye_mask = eye_mask.expand(self.args.batch_size, -1, -1)
+        self_exclusion_mask = 1.0 - eye_mask
+        if self._faulty and self.faulty_agent_indices:
+            for idx in self.faulty_agent_indices:
+                mask[:, idx] = 0
+                mask[idx, :] = 0
         mask =  mask.unsqueeze(0).expand(self.args.batch_size, -1, -1)
         #mask = mask * self_exclusion_mask
         return mask
 
-    def reset(self):
+    def reset(self, current_time_step=None, progress=None):
         self._faulty = False
         self.timestep = 0
-        self.fault_schedule = self.generate_fault_schedule()
+        self.fault_schedule = self.generate_fault_schedule(
+            current_time_step=current_time_step, progress=progress)
+        T_max = self.args.max_seq_len
+        self.time_to_next_transition = [0] * T_max
+        #print(self.fault_schedule)
         #print(f"Faulty timesteps: {len(self.fault_schedule)}")
         
 
-    def generate_fault_schedule(self):
-        """Generate blocks of faulty behavior based on fixed bin selection"""
-        
-        
+    def generate_fixed_schedule(self):
         faulty_timesteps = set()
-        faulty_timesteps.update(range(0, 10))
-        #faulty_timesteps.update(range(20, 30))
-        faulty_timesteps.update(range(40, 50))
-        
-        # total_timesteps = self.args.max_seq_len - 1
-        
-        # # Determine bin size and number of bins based on total timesteps
-       
-        # bin_size = 10
-        # num_bins = 5
-        
-        # # Number of bins to select (from args)
-        # num_bins_to_select = self.args.num_faulty_bins  # or whatever your arg name is
-        
-        # # Make sure we don't select more bins than available
-        # num_bins_to_select = min(num_bins_to_select, num_bins)
-        
-        # # Randomly select bins without replacement
-        # selected_bins = random.sample(range(num_bins), num_bins_to_select)
-        
-        # # Add all timesteps from selected bins to faulty_timesteps
-        # for bin_idx in selected_bins:
-        #     bin_start = bin_idx * bin_size
-        #     bin_end = min(bin_start + bin_size, total_timesteps + 1)  # +1 because range is exclusive
-        #     faulty_timesteps.update(set(range(bin_start, bin_end)))
-        
-        # # Convert to sorted list and return as set
+        faulty_timesteps.update(range(0, 15))
+        faulty_timesteps.update(range(30,40))
         return faulty_timesteps
+
+    def generate_fault_schedule(self, current_time_step=None, progress=None):
+        """Generate blocks of faulty behavior based on fixed bin selection"""
+        if progress == None:
+            progress = current_time_step/self.args.t_max
+        p_deterministic = max(0.0, 1.0 - progress * 0.8)
+        
+        if random.random() < p_deterministic:
+          
+            return self.generate_fixed_schedule()
+        else:
+            
+            faulty_timesteps = set()
+            faulty_timesteps.update(range(0, 15))
+            random_number = random.randint(25, 40)
+            faulty_timesteps.update(range(random_number, random_number+10))
+            return faulty_timesteps
     
     def forward(self, inputs, memory=None, attn_mask=None, actions=None, return_aux_losses=False, timestep=0):
         # Check if current timestep should be faulty
