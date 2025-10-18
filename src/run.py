@@ -86,8 +86,9 @@ def run(_run, _config, _log):
 
 
 def evaluate_sequential(args, runner):
-    for _ in range(args.test_nepisode):
-        runner.mac.agent.reset()
+    for t_episode in range(args.test_nepisode):
+        progress = t_episode/args.test_nepisode
+        runner.mac.agent.reset(progress=progress)
         runner.run(test_mode=True)
 
     if args.save_replay:
@@ -230,13 +231,12 @@ def run_sequential(args, logger):
 
             last_test_T = runner.t_env
             for _ in range(n_test_runs):
-                runner.mac.agent.reset()
+                runner.mac.agent.reset(current_time_step=runner.t_env)
                 runner.run(test_mode=True)
 
         if args.random_start:
-            if not args.action_fault:
-                learner.mac.agent.reset()
-                learner.old_mac.agent.reset()
+            learner.mac.agent.reset(current_time_step=runner.t_env)
+            learner.old_mac.agent.reset(current_time_step=runner.t_env)
                 
         if args.save_model and (
             runner.t_env - model_save_time >= args.save_model_interval
@@ -265,6 +265,7 @@ def run_sequential(args, logger):
                     )
 
         episode += args.batch_size_run
+        
 
         if (runner.t_env - last_log_T) >= args.log_interval:
             logger.log_stat("episode", episode, runner.t_env)
