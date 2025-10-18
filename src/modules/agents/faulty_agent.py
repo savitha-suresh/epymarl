@@ -17,7 +17,7 @@ class FaultyAgent(RNNAgent):
             raise ValueError("Cannot use this network fault with action_fault set to True")
         self._faulty = False
         self.init_random_fault()
-        self.reset()
+        self.reset(current_time_step=0)
         self.faulty_row = self.args.faulty_row
         self.no_op_action = 0
         
@@ -29,62 +29,39 @@ class FaultyAgent(RNNAgent):
         print(f"Agents {self.faulty_agent_indices} have become network faulty!")
         self._faulty = False
 
-    def reset(self):
+    def reset(self, current_time_step=None, progress=None):
         self._faulty = False
         self.timestep = 0
-        self.fault_schedule = self.generate_fault_schedule()
+        self.fault_schedule = self.generate_fault_schedule(
+            current_time_step=current_time_step, progress=progress)
+        T_max = self.args.max_seq_len
+        self.time_to_next_transition = [0] * T_max
+        #print(self.fault_schedule)
         #print(f"Faulty timesteps: {len(self.fault_schedule)}")
         
 
-    
-    def generate_fault_schedule(self):
-        """Generate blocks of faulty behavior based on fault percentage"""
+    def generate_fixed_schedule(self):
         faulty_timesteps = set()
-        faulty_timesteps.update(range(0, 10))
-        #faulty_timesteps.update(range(20, 30))
-        faulty_timesteps.update(range(40, 50))
+        faulty_timesteps.update(range(0, 15))
+        faulty_timesteps.update(range(30,40))
         return faulty_timesteps
-        # total_timesteps = self.args.max_seq_len - 1
-            
-        # fault_percentage = self.args.fault_percentage
-        # num_faulty_steps = int(total_timesteps * fault_percentage / 100)
+
+    def generate_fault_schedule(self, current_time_step=None, progress=None):
+        """Generate blocks of faulty behavior based on fixed bin selection"""
+        if progress == None:
+            progress = current_time_step/self.args.t_max
+        p_deterministic = max(0.0, 1.0 - progress * 0.8)
         
-        # # Block parameters
-        # min_block_size = self.args.min_fault_block
-        # calculated_max = max(min_block_size, int(total_timesteps * fault_percentage / 200))        
-        # max_block_size = calculated_max
-        # #print("max block size:", max_block_size)
-        # faulty_timesteps = set()
-        # block_miss_count = 0 
-        # remaining_faulty_steps = num_faulty_steps
-        
-        # while remaining_faulty_steps > 0:
-        #     #print(f"remaining time {remaining_faulty_steps}")
-        #     # Random block size, but don't exceed remaining steps
-        #     block_size = min(random.randint(min_block_size, max_block_size), remaining_faulty_steps)
-        #     # Random start position, ensuring block fits
-        #     #print(block_size)
-        #     max_start = total_timesteps - block_size
-        #     if max_start < 0:
-        #         break
-                
-        #     start_pos = random.randint(0, max_start)
+        if random.random() < p_deterministic:
+          
+            return self.generate_fixed_schedule()
+        else:
             
-        #     # Check for overlap with existing faulty blocks
-        #     proposed_block = set(range(start_pos, start_pos + block_size))
-        #     if not proposed_block.intersection(faulty_timesteps):
-        #         faulty_timesteps.update(proposed_block)
-        #         remaining_faulty_steps -= block_size
-        #     else:
-        #         block_miss_count+=1
-        #     if block_miss_count > 10:
-        #         break
-            
-        #     # Safety check to avoid infinite loop
-        #     if len(faulty_timesteps) + remaining_faulty_steps > total_timesteps:
-        #         break
-        
-        # return faulty_timesteps
+            faulty_timesteps = set()
+            faulty_timesteps.update(range(0, 15))
+            random_number = random.randint(25, 40)
+            faulty_timesteps.update(range(random_number, random_number+10))
+            return faulty_timesteps
     
     def forward(self, inputs, hidden_state, timestep):
         # Check if current timestep should be faulty
