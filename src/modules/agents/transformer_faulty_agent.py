@@ -74,20 +74,12 @@ class TransformerFaultyAgent(TransformerAgent):
 
     def generate_fault_schedule(self, current_time_step=None, progress=None):
         """Generate blocks of faulty behavior based on fixed bin selection"""
-        if progress == None:
-            progress = current_time_step/self.args.t_max
-        p_deterministic = max(0.0, 1.0 - progress * 0.8)
-        
-        if random.random() < p_deterministic:
-          
-            return self.generate_fixed_schedule()
-        else:
-            
-            faulty_timesteps = set()
-            faulty_timesteps.update(range(0, 15))
-            random_number = random.randint(25, 40)
-            faulty_timesteps.update(range(random_number, random_number+10))
-            return faulty_timesteps
+        faulty_timesteps = set()
+        #if random.random() < self.args.fault_prob:
+        faulty_timesteps.update(range(0, 15))
+        if random.random() < self.args.fault_prob:
+            faulty_timesteps.update(range(30,40))
+        return faulty_timesteps
     
     def forward(self, inputs, memory=None, attn_mask=None, actions=None, return_aux_losses=False, timestep=0):
         # Check if current timestep should be faulty
