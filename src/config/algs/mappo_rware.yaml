@@ -48,5 +48,3 @@ faulty_row: 9
 max_seq_len: 501
 n_heads: 4
 n_layers: 2
-fault_percentage: 40
-min_fault_block: 10
