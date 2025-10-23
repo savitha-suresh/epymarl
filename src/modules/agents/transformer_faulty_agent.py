@@ -49,7 +49,7 @@ class TransformerFaultyAgent(TransformerAgent):
         if self.faulty_agent_indices:
             for idx in self.faulty_agent_indices:
                 mask[:, idx] = 0
-                mask[idx, :] = 0
+                #mask[idx, :] = 0
         mask =  mask.unsqueeze(0).expand(self.args.batch_size, -1, -1)
         #mask = mask * self_exclusion_mask
         return mask
