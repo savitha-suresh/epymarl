@@ -49,5 +49,5 @@ n_heads: 1
 n_layers: 1
 return_aux_losses: True
 random_start: True
-fault_percentage: 25
+fault_percentage: 75
 fault_idx: 3

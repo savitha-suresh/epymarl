@@ -58,49 +58,38 @@ class TransformerFaultyAgent(TransformerAgent):
         self._faulty = False
         self.timestep = 0
         self.fault_schedule = self.generate_fault_schedule()
-        #print(f"Faulty timesteps: {len(self.fault_schedule)}")
+        #print(f"Faulty timesteps: {len(self.fault_schedule)}, {self.fault_schedule}")
 
     def generate_fault_schedule(self):
         """Generate blocks of faulty behavior based on fault percentage"""
-        if not hasattr(self.args, 'total_timesteps'):
-            total_timesteps = getattr(self.args, 'total_timesteps', 1000)
-        else:
-            total_timesteps = self.args.total_timesteps
-            
+        total_timesteps = self.args.max_seq_len - 1
         fault_percentage = getattr(self.args, 'fault_percentage', 20)  # Default 20%
         num_faulty_steps = int(total_timesteps * fault_percentage / 100)
         
         # Block parameters
         min_block_size = getattr(self.args, 'min_fault_block', 5)
-        # Calculate max_block_size based on fault percentage
-        # For higher fault percentages, allow larger blocks
-        # Rule: max block shouldn't exceed fault_percentage/2 of total steps
         calculated_max = max(min_block_size, int(total_timesteps * fault_percentage / 200))
         max_block_size = calculated_max
         
         faulty_timesteps = set()
-        remaining_faulty_steps = num_faulty_steps
+        current_pos = 0
         
-        while remaining_faulty_steps > 0:
-            # Random block size, but don't exceed remaining steps
-            block_size = min(random.randint(min_block_size, max_block_size), remaining_faulty_steps)
+        while len(faulty_timesteps) < num_faulty_steps and current_pos < total_timesteps:
+            # Calculate remaining steps needed
+            remaining_steps = num_faulty_steps - len(faulty_timesteps)
             
-            # Random start position, ensuring block fits
-            max_start = total_timesteps - block_size
-            if max_start < 0:
-                break
-                
-            start_pos = random.randint(0, max_start)
+            # Pick random block size (between 0 and max_block_size)
+            # But don't exceed remaining steps or remaining timesteps
+            max_possible_block = min(max_block_size, remaining_steps, total_timesteps - current_pos)
+            block_size = random.randint(0, max_possible_block)
             
-            # Check for overlap with existing faulty blocks
-            proposed_block = set(range(start_pos, start_pos + block_size))
-            if not proposed_block.intersection(faulty_timesteps):
-                faulty_timesteps.update(proposed_block)
-                remaining_faulty_steps -= block_size
+            # Add the block to faulty_timesteps
+            if block_size > 0:
+                faulty_timesteps.update(range(current_pos, current_pos + block_size))
+                current_pos += block_size
             
-            # Safety check to avoid infinite loop
-            if len(faulty_timesteps) + remaining_faulty_steps > total_timesteps:
-                break
+            # Move to next position (skip one step to create gap)
+            current_pos += 1
         
         return faulty_timesteps
 
