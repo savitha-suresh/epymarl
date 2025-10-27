@@ -23,7 +23,7 @@ class FaultyAgent(RNNAgent):
         
     
     def init_random_fault(self):
-        self.faulty_agent_indices = set(int(self.args.fault_idx))
+        self.faulty_agent_indices = set([int(self.args.fault_idx)])
 
         print(f"Agents {self.faulty_agent_indices} have become network faulty!")
         self._faulty = False
