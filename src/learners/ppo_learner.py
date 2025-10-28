@@ -68,6 +68,7 @@ class PPOLearner:
         active_agents[inactive_agents] = 0
         active_agents = active_agents.view(1, 1, -1)
         
+        
         if self.args.standardise_rewards:
             self.rew_ms.update(rewards)
             rewards = (rewards - self.rew_ms.mean) / th.sqrt(self.rew_ms.var)

@@ -23,15 +23,13 @@ def filter_agents(data):
         for agent_id, values in env_data['agents'].items():
             # Convert agent_id to int if it's stored as string in JSON
             agent_id = int(agent_id) if isinstance(agent_id, str) else agent_id
-            if len(values) != 71:
-                raise Exception(f"agent {agent_id} and step {env_data['step']} {len(values)}")
             # Make sure we have at least 2 values
             if len(values) > 1:
                 # Filter agents whose id is not 0 or 1 and 2nd index (index 1) is 1
                 # if agent_id not in [failed_agents]
                 #if agent_id not in [0, 1] and values[2] == 1.0:
-                if values[2] == 1.0: 
-                    filtered_agents[agent_id] = values
+                # if values[2] == 1.0: 
+                filtered_agents[agent_id] = values
         
         if filtered_agents:
             # Create a copy of the original env_data to avoid modifying it
@@ -70,29 +68,29 @@ def process_json_files(input_dir, output_dir):
     for i, json_file in enumerate(json_files):
         print(f"Processing file {i+1}/{len(json_files)}: {os.path.basename(json_file)}")
         
-        try:
+        # try:
             # Read the input file
-            with open(json_file, 'r') as f:
-                data = json.load(f)
+        with open(json_file, 'r') as f:
+            data = json.load(f)
+        
+        # Apply filtering
+        filtered_data = filter_agents(data)
+        
+        # Generate output filename
+        base_filename = os.path.basename(json_file)
+        output_filename = f"filtered_{base_filename}"
+        output_path = os.path.join(output_dir, output_filename)
+        
+        # Write filtered data
+        with open(output_path, 'w') as f:
+            json.dump(filtered_data, f)
+        
+        print(f"  - Original entries: {len(data)}")
+        print(f"  - Filtered entries: {len(filtered_data)}")
+        print(f"  - Wrote filtered data to: {output_path}")
             
-            # Apply filtering
-            filtered_data = filter_agents(data)
-            
-            # Generate output filename
-            base_filename = os.path.basename(json_file)
-            output_filename = f"filtered_{base_filename}"
-            output_path = os.path.join(output_dir, output_filename)
-            
-            # Write filtered data
-            with open(output_path, 'w') as f:
-                json.dump(filtered_data, f)
-            
-            print(f"  - Original entries: {len(data)}")
-            print(f"  - Filtered entries: {len(filtered_data)}")
-            print(f"  - Wrote filtered data to: {output_path}")
-            
-        except Exception as e:
-            print(f"Error processing {json_file}: {str(e)}")
+        # except Exception as e:
+        #     print(f"Error processing {json_file}: {str(e)}")
     
     print("Filtering complete!")
 
