@@ -26,8 +26,8 @@ def analyze_agent_positions(input_dir):
     
     # Dictionary to track agent positions
     # Key: agent_id, Value: {position: count, last_step: step}
-    agent_tracking = defaultdict(list)
-    
+    agent_tracking = defaultdict(lambda: defaultdict(list))
+    episode = 0 
     
     
     # Process each file
@@ -43,9 +43,13 @@ def analyze_agent_positions(input_dir):
         for env_data in data:
             # Get the step number
             step = env_data['step']
+            if step == 0:
+                episode += 1
+            n_agents = len(env_data['agents'])
+            pos_idx = -n_agents*3 # position starts from the end
             for agent_id, obs in env_data['agents'].items():
                 # store step and the position of the agent
-                agent_tracking[agent_id].append((step, (obs[0], obs[1])))
+                agent_tracking[episode][agent_id].append((step, (obs[-pos_idx], obs[-pos_idx+1])))
                 
     return agent_tracking
 
@@ -59,31 +63,37 @@ def display_stuck_agents(agent_tracking):
     if not agent_tracking:
         return
     prev_step = 0
-    results = defaultdict(list)
+    results = defaultdict(lambda: defaultdict(list))
     position_tracking = defaultdict(lambda: defaultdict(int))
-    for agent_id, positions in agent_tracking.items():
-        prev_step = 0
-        for step, position in positions:
-            # end of episode
-            if (prev_step!=0)and ((step < prev_step) or (step > prev_step+1)):
-                for position, count in position_tracking[agent_id].items():
-                    if count > 4:
-                        results[agent_id].append(count)
-                position_tracking[agent_id]=defaultdict(int)
-            
-            elif step == prev_step+1 or prev_step == 0:
-                position_tracking[agent_id][position] += 1
-            
-            prev_step = step
+    for episode in agent_tracking.keys():
+        for agent_id, positions in agent_tracking[episode].items():
+            prev_step = 0
+            for step, position in positions:
+                # end of episode
+                if (prev_step!=0)and ((step < prev_step) or (step > prev_step+1)):
+                    for position, count in position_tracking[agent_id].items():
+                        if count > 4:
+                            results[episode][agent_id].append(count)
+                    position_tracking[agent_id]=defaultdict(int)
+                
+                elif step == prev_step+1 or prev_step == 0:
+                    position_tracking[agent_id][position] += 1
+                
+                prev_step = step
     
     for agent_id, positions in position_tracking.items():
         for position, count in positions.items():
             if count > 4:
-                results[agent_id].append(count)
+                results[episode][agent_id].append(count)
     #print(results)
-    print(results.keys())
-    for agent_id in results:
-        print(f"Agent id {agent_id} {sum(results[agent_id])//4}")
+    n_episodes = len(agent_tracking.keys())
+    print(f"Total episodes: {n_episodes}")
+    final_results = defaultdict(list)
+    for episode, data in results.items():
+        for agent_id in data.keys():
+            final_results[agent_id].append(sum(data[agent_id])//4)
+    for agent_id in final_results.keys():
+        print(f"Agent id {agent_id} {sum(final_results[agent_id])//n_episodes}")
 
 def main():
     input_dir = 'filtered_json'  # Directory containing the filtered JSON files

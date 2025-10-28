@@ -25,8 +25,7 @@ class TransformerFaultyAgent(TransformerAgent):
         
     
     def init_random_fault(self):
-        self.faulty_agent_indices = set(random.sample(range(self.args.n_agents), 
-                                                      self.args.n_faulty_agents))
+        self.faulty_agent_indices = {int(self.args.fault_idx)}
 
         print(f"Agents {self.faulty_agent_indices} have become network faulty!")
         self._faulty = False
@@ -62,38 +61,37 @@ class TransformerFaultyAgent(TransformerAgent):
         
 
     def generate_fault_schedule(self):
-        """Generate blocks of faulty behavior based on fixed bin selection"""
+        total_timesteps = self.args.max_seq_len - 1
+        fault_percentage = getattr(self.args, 'fault_percentage', 20)  # Default 20%
+        num_faulty_steps = int(total_timesteps * fault_percentage / 100)
         
+        # Block parameters
+        min_block_size = getattr(self.args, 'min_fault_block', 5)
+        calculated_max = max(min_block_size, int(total_timesteps * fault_percentage / 200))
+        max_block_size = calculated_max
         
         faulty_timesteps = set()
-        faulty_timesteps.update(range(0, 10))
-        #faulty_timesteps.update(range(20, 30))
-        faulty_timesteps.update(range(40, 50))
+        current_pos = 0
         
-        # total_timesteps = self.args.max_seq_len - 1
+        while len(faulty_timesteps) < num_faulty_steps and current_pos < total_timesteps:
+            # Calculate remaining steps needed
+            remaining_steps = num_faulty_steps - len(faulty_timesteps)
+            
+            # Pick random block size (between 0 and max_block_size)
+            # But don't exceed remaining steps or remaining timesteps
+            max_possible_block = min(max_block_size, remaining_steps, total_timesteps - current_pos)
+            block_size = random.randint(0, max_possible_block)
+            
+            # Add the block to faulty_timesteps
+            if block_size > 0:
+                faulty_timesteps.update(range(current_pos, current_pos + block_size))
+                current_pos += block_size
+            
+            # Move to next position (skip one step to create gap)
+            current_pos += 1
         
-        # # Determine bin size and number of bins based on total timesteps
-       
-        # bin_size = 10
-        # num_bins = 5
-        
-        # # Number of bins to select (from args)
-        # num_bins_to_select = self.args.num_faulty_bins  # or whatever your arg name is
-        
-        # # Make sure we don't select more bins than available
-        # num_bins_to_select = min(num_bins_to_select, num_bins)
-        
-        # # Randomly select bins without replacement
-        # selected_bins = random.sample(range(num_bins), num_bins_to_select)
-        
-        # # Add all timesteps from selected bins to faulty_timesteps
-        # for bin_idx in selected_bins:
-        #     bin_start = bin_idx * bin_size
-        #     bin_end = min(bin_start + bin_size, total_timesteps + 1)  # +1 because range is exclusive
-        #     faulty_timesteps.update(set(range(bin_start, bin_end)))
-        
-        # # Convert to sorted list and return as set
         return faulty_timesteps
+
     
     def forward(self, inputs, memory=None, attn_mask=None, actions=None, return_aux_losses=False, timestep=0):
         # Check if current timestep should be faulty
