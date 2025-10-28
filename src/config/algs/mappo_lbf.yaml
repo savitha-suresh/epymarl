@@ -49,3 +49,4 @@ max_seq_len: 51
 n_heads: 4
 n_layers: 2
 fault_percentage: 100
+fault_idx: 5
